@@ -83,6 +83,8 @@ fun KeyboardScreen(
             val keyboardHeight = state.keyHeightDp.dp * 4
             if (state.candidateListExpanded && state.composing) {
                 CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+            } else if (state.panel == Panel.Voice) {
+                VoicePanel(state.voice, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             } else if (state.panel == Panel.Clipboard) {
                 ClipboardPanel(state.clips, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             } else if (state.panel == Panel.Cursor) {
@@ -156,6 +158,9 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
         }
         ToolbarButton(R.drawable.ic_open_with, "カーソル移動") {
             onAction(if (state.panel == Panel.Cursor) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Cursor))
+        }
+        ToolbarButton(R.drawable.ic_mic, "音声入力") {
+            onAction(if (state.panel == Panel.Voice) KeyAction.ClosePanel else KeyAction.StartVoice)
         }
         ToolbarButton(R.drawable.ic_dialpad, "テンキー") { onAction(KeyAction.ToggleNumberPad) }
         val other = if (state.layout == KeyboardLayout.Flick) KeyboardLayout.Qwerty else KeyboardLayout.Flick

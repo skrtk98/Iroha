@@ -18,6 +18,16 @@ enum class EnterKind { Newline, Done, Go, Search, Send, Next, Confirm }
 
 enum class SpaceKind { Space, Convert, NextCandidate }
 
+enum class VoiceStatus { Idle, Listening, NeedsPermission, Error }
+
+@Immutable
+data class VoiceUiState(
+    val status: VoiceStatus = VoiceStatus.Idle,
+    val partial: String = "",
+    val message: String = "",
+    val onDevice: Boolean = true,
+)
+
 @Immutable
 data class KeyboardUiState(
     val layout: KeyboardLayout = KeyboardLayout.Flick,
@@ -37,4 +47,5 @@ data class KeyboardUiState(
     /** カーソルモードで選択範囲を伸ばしているか。 */
     val selecting: Boolean = false,
     val clips: List<io.github.skrtk98.iroha.data.ClipEntry> = emptyList(),
+    val voice: VoiceUiState = VoiceUiState(),
 )

@@ -56,6 +56,8 @@ fun SettingsRoute(
     onShowInputMethodPicker: () -> Unit,
     onOpenLicenses: () -> Unit,
     onClearClipboard: () -> Unit,
+    micGranted: Boolean,
+    onRequestMic: () -> Unit,
     extraSections: @Composable () -> Unit = {},
 ) {
     fun read() = SettingsUiState(
@@ -82,6 +84,8 @@ fun SettingsRoute(
         onLearningChange = { update { learningEnabled = it } },
         onClipboardHistoryChange = { update { clipboardHistory = it } },
         onClearClipboard = onClearClipboard,
+        micGranted = micGranted,
+        onRequestMic = onRequestMic,
         onOpenLicenses = onOpenLicenses,
         extraSections = extraSections,
     )
@@ -100,6 +104,8 @@ fun SettingsScreen(
     onLearningChange: (Boolean) -> Unit,
     onClipboardHistoryChange: (Boolean) -> Unit,
     onClearClipboard: () -> Unit,
+    micGranted: Boolean,
+    onRequestMic: () -> Unit,
     onOpenLicenses: () -> Unit,
     modifier: Modifier = Modifier,
     extraSections: @Composable () -> Unit = {},
@@ -167,6 +173,18 @@ fun SettingsScreen(
             OutlinedButton(onClick = onClearClipboard) { Text("履歴をすべて消去") }
 
             HorizontalDivider()
+            SectionTitle("音声入力")
+            Text(
+                "端末内の音声認識を使います。対応していない端末では、オフライン優先でシステムの音声認識を使います。",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (micGranted) {
+                Text("マイクの権限: 許可済み", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                OutlinedButton(onClick = onRequestMic) { Text("マイクの権限を許可") }
+            }
+
+            HorizontalDivider()
             SectionTitle("このアプリについて")
             Text(
                 "Iroha は完全にオフラインで動作します。インターネット接続の権限を持たず、入力内容を外部に送信しません。",
@@ -219,6 +237,8 @@ private fun SettingsScreenPreview() {
             onLearningChange = {},
             onClipboardHistoryChange = {},
             onClearClipboard = {},
+            micGranted = false,
+            onRequestMic = {},
             onOpenLicenses = {},
         )
     }
