@@ -69,7 +69,8 @@ class KeyboardController(
     }
 
     fun onStartInput(info: EditorInfo?, restarting: Boolean) {
-        if (!restarting) resetComposition()
+        // restarting でも別の欄に移っていることがある（Compose の同一ビュー内のフォーカス移動など）ので必ず捨てる
+        resetComposition()
         val inputType = info?.inputType ?: 0
         val inputClass = inputType and InputType.TYPE_MASK_CLASS
         val variation = inputType and InputType.TYPE_MASK_VARIATION
