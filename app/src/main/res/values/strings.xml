@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Iroha</string>
+    <string name="ime_name">Iroha 日本語入力</string>
+    <string name="subtype_ja">日本語</string>
+</resources>
