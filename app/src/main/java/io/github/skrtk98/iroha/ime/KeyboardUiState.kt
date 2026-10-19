@@ -36,4 +36,5 @@ data class KeyboardUiState(
     val panel: Panel = Panel.None,
     /** カーソルモードで選択範囲を伸ばしているか。 */
     val selecting: Boolean = false,
+    val clips: List<io.github.skrtk98.iroha.data.ClipEntry> = emptyList(),
 )

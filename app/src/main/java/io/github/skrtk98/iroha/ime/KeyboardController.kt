@@ -3,6 +3,7 @@ package io.github.skrtk98.iroha.ime
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
+import io.github.skrtk98.iroha.data.ClipboardRepository
 import io.github.skrtk98.iroha.data.Engine
 import io.github.skrtk98.iroha.data.KeyboardLayout
 import io.github.skrtk98.iroha.data.Settings
@@ -36,6 +37,7 @@ class KeyboardController(
     private val settings: Settings,
     private val editor: EditorBridge,
     private val host: ImeHost,
+    private val clipboard: ClipboardRepository,
 ) {
     private val _state = MutableStateFlow(KeyboardUiState(loading = true))
     val state: StateFlow<KeyboardUiState> = _state.asStateFlow()
@@ -55,6 +57,7 @@ class KeyboardController(
 
     init {
         scope.launch { collectSuggestions() }
+        scope.launch { clipboard.entries.collect { clips -> _state.update { it.copy(clips = clips) } } }
     }
 
     fun onEngineLoaded(engine: Engine) {
@@ -141,10 +144,18 @@ class KeyboardController(
             is KeyAction.ResizeSegment -> if (session?.resizeSegment(action.delta) == true) render()
             is KeyAction.OpenPanel -> {
                 commitAll()
+                if (action.panel == Panel.Clipboard) clipboard.ensureLoaded()
                 _state.update { it.copy(panel = action.panel, selecting = false, candidateListExpanded = false) }
             }
             KeyAction.ClosePanel -> _state.update { it.copy(panel = Panel.None, selecting = false) }
             is KeyAction.Cursor -> cursor(action.command)
+            is KeyAction.PasteClip -> {
+                commitAll()
+                editor.commitText(action.text)
+            }
+            is KeyAction.TogglePinClip -> clipboard.togglePin(action.text)
+            is KeyAction.DeleteClip -> clipboard.remove(action.text)
+            KeyAction.ClearClips -> clipboard.clearUnpinned()
             KeyAction.OpenSettings -> host.openSettings()
             KeyAction.SwitchInputMethod -> host.switchInputMethod()
             KeyAction.HideKeyboard -> host.hideKeyboard()

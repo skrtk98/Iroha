@@ -1,6 +1,7 @@
 package io.github.skrtk98.iroha
 
 import android.app.Application
+import io.github.skrtk98.iroha.data.ClipboardRepository
 import io.github.skrtk98.iroha.data.EngineRepository
 import io.github.skrtk98.iroha.data.Settings
 import kotlinx.coroutines.CoroutineScope
@@ -14,4 +15,5 @@ class IrohaApplication : Application() {
 
     val settings by lazy { Settings(this) }
     val engineRepository by lazy { EngineRepository(this, appScope) }
+    val clipboardRepository by lazy { ClipboardRepository(this, appScope, settings) }
 }

@@ -42,13 +42,18 @@ sealed interface KeyAction {
     /** カーソルモードの操作。 */
     data class Cursor(val command: CursorCommand) : KeyAction
 
+    data class PasteClip(val text: String) : KeyAction
+    data class TogglePinClip(val text: String) : KeyAction
+    data class DeleteClip(val text: String) : KeyAction
+    data object ClearClips : KeyAction
+
     data object OpenSettings : KeyAction
     data object SwitchInputMethod : KeyAction
     data object HideKeyboard : KeyAction
 }
 
 /** キーボード領域に出すパネル。 */
-enum class Panel { None, Cursor }
+enum class Panel { None, Cursor, Clipboard }
 
 enum class CursorCommand {
     Left, Right, Up, Down, LineStart, LineEnd,

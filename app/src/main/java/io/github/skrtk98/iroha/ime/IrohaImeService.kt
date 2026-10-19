@@ -1,5 +1,6 @@
 package io.github.skrtk98.iroha.ime
 
+import android.content.ClipboardManager
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.Build
@@ -38,6 +39,13 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
 
     private val app get() = application as IrohaApplication
     private lateinit var controller: KeyboardController
+    private val clipboardManager by lazy { getSystemService(ClipboardManager::class.java) }
+
+    /** IME が既定の入力方法である間だけ、バックグラウンドでもクリップボードを読める。 */
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener {
+        val clip = runCatching { clipboardManager.primaryClip }.getOrNull()
+        app.clipboardRepository.onPrimaryClipChanged(clip)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -48,8 +56,9 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
             editorInfo = { currentInputEditorInfo },
             highlightColor = PREEDIT_HIGHLIGHT,
         )
-        controller = KeyboardController(lifecycleScope, app.settings, bridge, this)
+        controller = KeyboardController(lifecycleScope, app.settings, bridge, this, app.clipboardRepository)
         lifecycleScope.launch { controller.onEngineLoaded(app.engineRepository.load()) }
+        clipboardManager.addPrimaryClipChangedListener(clipListener)
     }
 
     override fun onCreateInputView(): View {
@@ -99,6 +108,7 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onDestroy() {
+        clipboardManager.removePrimaryClipChangedListener(clipListener)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         super.onDestroy()
     }
