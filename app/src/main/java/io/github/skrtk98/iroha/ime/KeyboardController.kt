@@ -1,0 +1,326 @@
+package io.github.skrtk98.iroha.ime
+
+import android.text.InputType
+import android.view.inputmethod.EditorInfo
+import io.github.skrtk98.iroha.data.Engine
+import io.github.skrtk98.iroha.data.KeyboardLayout
+import io.github.skrtk98.iroha.data.Settings
+import io.github.skrtk98.iroha.engine.conv.Candidate
+import io.github.skrtk98.iroha.engine.session.ComposingSession
+import io.github.skrtk98.iroha.engine.session.Preedit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** IME 本体が担う、キーボード以外のプラットフォーム操作。 */
+interface ImeHost {
+    fun openSettings()
+    fun switchInputMethod()
+    fun hideKeyboard()
+}
+
+/**
+ * キー操作を受けて未確定文字列と候補を管理し、エディタに反映する。
+ * IME サービスの寿命に合わせた [scope] の中で、メインスレッドから使う。
+ */
+class KeyboardController(
+    private val scope: CoroutineScope,
+    private val settings: Settings,
+    private val editor: EditorBridge,
+    private val host: ImeHost,
+) {
+    private val _state = MutableStateFlow(KeyboardUiState(loading = true))
+    val state: StateFlow<KeyboardUiState> = _state.asStateFlow()
+
+    private var engine: Engine? = null
+    private var session: ComposingSession? = null
+
+    /** 予測候補を求める読み。最新の値だけを処理する。 */
+    private val suggestionRequests = MutableStateFlow<String?>(null)
+    private var suggestions: List<Candidate> = emptyList()
+
+    /** エディタに未確定文字列を表示しているか。 */
+    private var hasPreedit = false
+
+    /** 直接入力（英字・数字・パスワード欄など）で変換を使わない。 */
+    private var directInput = false
+
+    init {
+        scope.launch { collectSuggestions() }
+    }
+
+    fun onEngineLoaded(engine: Engine) {
+        this.engine = engine
+        session = ComposingSession(engine.converter, if (settings.learningEnabled) engine.learning else null)
+        _state.update { it.copy(loading = false) }
+    }
+
+    fun onStartInput(info: EditorInfo?, restarting: Boolean) {
+        if (!restarting) resetComposition()
+        val inputType = info?.inputType ?: 0
+        val inputClass = inputType and InputType.TYPE_MASK_CLASS
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        val layout = settings.defaultLayout
+        val isNumeric = inputClass == InputType.TYPE_CLASS_NUMBER ||
+            inputClass == InputType.TYPE_CLASS_PHONE ||
+            inputClass == InputType.TYPE_CLASS_DATETIME
+        val isAscii = inputClass == InputType.TYPE_CLASS_TEXT && variation in ASCII_VARIATIONS
+        val face = when {
+            isNumeric -> KeyboardFace.NumberPad
+            isAscii -> if (layout == KeyboardLayout.Flick) KeyboardFace.FlickAlphabet else KeyboardFace.QwertyAlphabet
+            else -> if (layout == KeyboardLayout.Flick) KeyboardFace.FlickKana else KeyboardFace.QwertyKana
+        }
+        directInput = isNumeric || isAscii
+        _state.update {
+            it.copy(
+                layout = layout,
+                face = face,
+                shifted = false,
+                enterKind = enterKindOf(info),
+                keyHeightDp = settings.keyHeightDp,
+                vibrate = settings.vibrate,
+                candidateListExpanded = false,
+            )
+        }
+        render()
+    }
+
+    fun onFinishInput() {
+        resetComposition()
+    }
+
+    /** エディタ側でカーソルが未確定文字列の外へ動いたら、入力を打ち切る。 */
+    fun onSelectionChanged(newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
+        val s = session ?: return
+        if (!s.isComposing) return
+        if (candidatesStart < 0 || newSelStart < candidatesStart || newSelEnd > candidatesEnd) {
+            s.clear()
+            editor.finishComposing()
+            render()
+        }
+    }
+
+    fun onAction(action: KeyAction) {
+        when (action) {
+            is KeyAction.Text -> inputText(action.text)
+            KeyAction.Backspace -> backspace()
+            KeyAction.Space -> space()
+            KeyAction.Enter -> enter()
+            KeyAction.CursorLeft -> moveCursor(-1)
+            KeyAction.CursorRight -> moveCursor(1)
+            KeyAction.ToggleModifier -> if (session?.toggleModifier() == true) render()
+            KeyAction.Shift -> _state.update { it.copy(shifted = !it.shifted) }
+            KeyAction.CycleMode -> cycleFlickMode()
+            KeyAction.ToggleKanaAlphabet -> switchFace(
+                if (_state.value.face == KeyboardFace.QwertyKana) KeyboardFace.QwertyAlphabet else KeyboardFace.QwertyKana,
+            )
+            KeyAction.ToggleSymbols -> switchFace(
+                if (_state.value.face == KeyboardFace.QwertySymbols) KeyboardFace.QwertyKana else KeyboardFace.QwertySymbols,
+            )
+            is KeyAction.SwitchLayout -> {
+                settings.defaultLayout = action.layout
+                commitAll()
+                switchFace(if (action.layout == KeyboardLayout.Flick) KeyboardFace.FlickKana else KeyboardFace.QwertyKana)
+                _state.update { it.copy(layout = action.layout) }
+            }
+            KeyAction.ToggleNumberPad -> switchFace(
+                if (_state.value.face == KeyboardFace.NumberPad) defaultFace() else KeyboardFace.NumberPad,
+            )
+            is KeyAction.SelectCandidate -> selectCandidate(action.index)
+            KeyAction.ToggleCandidateList -> _state.update { it.copy(candidateListExpanded = !it.candidateListExpanded) }
+            is KeyAction.ResizeSegment -> if (session?.resizeSegment(action.delta) == true) render()
+            KeyAction.OpenSettings -> host.openSettings()
+            KeyAction.SwitchInputMethod -> host.switchInputMethod()
+            KeyAction.HideKeyboard -> host.hideKeyboard()
+        }
+    }
+
+    private fun inputText(text: String) {
+        val s = session
+        val face = _state.value.face
+        val kanaFace = face == KeyboardFace.FlickKana || face == KeyboardFace.QwertyKana
+        if (s == null || directInput || !kanaFace) {
+            commitAll()
+            val shifted = _state.value.shifted
+            editor.commitText(if (shifted) text.uppercase() else text)
+            if (shifted && face != KeyboardFace.QwertySymbols) _state.update { it.copy(shifted = false) }
+            return
+        }
+        val committed = s.insert(text, romaji = face == KeyboardFace.QwertyKana)
+        if (committed.isNotEmpty()) editor.commitText(committed)
+        render()
+    }
+
+    private fun backspace() {
+        val s = session
+        if (s != null && s.backspace()) {
+            render()
+        } else {
+            editor.deleteBackward()
+        }
+    }
+
+    private fun space() {
+        val s = session
+        if (s != null && s.isComposing) {
+            s.convertOrNext()
+            render()
+            return
+        }
+        val kana = _state.value.face == KeyboardFace.FlickKana || _state.value.face == KeyboardFace.QwertyKana
+        editor.commitText(if (kana && settings.fullWidthSpace) "　" else " ")
+    }
+
+    private fun enter() {
+        val s = session
+        if (s != null && s.isComposing) {
+            editor.commitText(s.commit())
+            render()
+        } else {
+            editor.sendEnter()
+        }
+    }
+
+    private fun moveCursor(delta: Int) {
+        val s = session
+        if (s != null && s.moveCursor(delta)) {
+            render()
+        } else {
+            editor.moveCursor(delta)
+        }
+    }
+
+    private fun selectCandidate(index: Int) {
+        val s = session ?: return
+        val committed = if (s.isConverting) {
+            s.selectCandidate(index)
+        } else {
+            val candidate = suggestions.getOrNull(index) ?: return
+            s.selectSuggestion(candidate, index)
+        }
+        if (committed.isNotEmpty()) editor.commitText(committed)
+        _state.update { it.copy(candidateListExpanded = false) }
+        render()
+    }
+
+    private fun cycleFlickMode() {
+        val next = when (_state.value.face) {
+            KeyboardFace.FlickKana -> KeyboardFace.FlickAlphabet
+            KeyboardFace.FlickAlphabet -> KeyboardFace.FlickNumber
+            else -> KeyboardFace.FlickKana
+        }
+        switchFace(next)
+    }
+
+    private fun switchFace(face: KeyboardFace) {
+        commitAll()
+        _state.update { it.copy(face = face, shifted = false) }
+    }
+
+    private fun defaultFace(): KeyboardFace =
+        if (_state.value.layout == KeyboardLayout.Flick) KeyboardFace.FlickKana else KeyboardFace.QwertyKana
+
+    /** 未確定文字列があれば確定する。 */
+    fun commitAll() {
+        val s = session ?: return
+        if (!s.isComposing) return
+        editor.commitText(s.commit())
+        render()
+    }
+
+    private fun resetComposition() {
+        session?.clear()
+        hasPreedit = false
+        suggestions = emptyList()
+        suggestionRequests.value = null
+        _state.update { it.copy(composing = false, converting = false, candidates = emptyList(), selectedCandidate = -1) }
+    }
+
+    /** セッションの状態をエディタと UI に反映する。 */
+    private fun render() {
+        val s = session
+        val composing = s?.isComposing == true
+        val converting = s?.isConverting == true
+        if (s != null && composing) {
+            editor.setPreedit(s.preedit)
+            hasPreedit = true
+        } else if (hasPreedit) {
+            // 削除で空になった・確定前に破棄したときに残りを消す
+            editor.setPreedit(Preedit.Empty)
+            hasPreedit = false
+        }
+        if (converting) {
+            suggestionRequests.value = null
+            val list = s.focusedCandidates
+            _state.update {
+                it.copy(
+                    composing = true,
+                    converting = true,
+                    candidates = list.map(Candidate::surface),
+                    selectedCandidate = s.focusedIndex,
+                    spaceKind = SpaceKind.NextCandidate,
+                )
+            }
+        } else {
+            suggestionRequests.value = if (composing) s.suggestionReading else null
+            _state.update {
+                it.copy(
+                    composing = composing,
+                    converting = false,
+                    candidates = if (composing) it.candidates else emptyList(),
+                    selectedCandidate = -1,
+                    spaceKind = if (composing) SpaceKind.Convert else SpaceKind.Space,
+                    candidateListExpanded = it.candidateListExpanded && composing,
+                )
+            }
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun collectSuggestions() {
+        suggestionRequests.collectLatest { reading ->
+            val converter = engine?.converter
+            if (reading == null || converter == null) {
+                suggestions = emptyList()
+                return@collectLatest
+            }
+            val result = withContext(Dispatchers.Default) { converter.suggest(reading) }
+            // 計算中に入力が進んでいれば捨てる
+            if (suggestionRequests.value != reading) return@collectLatest
+            suggestions = result
+            _state.update { it.copy(candidates = result.map(Candidate::surface)) }
+        }
+    }
+
+    private fun enterKindOf(info: EditorInfo?): EnterKind {
+        if (info == null) return EnterKind.Newline
+        if (info.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0) return EnterKind.Newline
+        if (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0) return EnterKind.Newline
+        return when (info.imeOptions and EditorInfo.IME_MASK_ACTION) {
+            EditorInfo.IME_ACTION_GO -> EnterKind.Go
+            EditorInfo.IME_ACTION_SEARCH -> EnterKind.Search
+            EditorInfo.IME_ACTION_SEND -> EnterKind.Send
+            EditorInfo.IME_ACTION_NEXT -> EnterKind.Next
+            EditorInfo.IME_ACTION_DONE -> EnterKind.Done
+            else -> EnterKind.Newline
+        }
+    }
+
+    private companion object {
+        val ASCII_VARIATIONS = setOf(
+            InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
+            InputType.TYPE_TEXT_VARIATION_URI,
+        )
+    }
+}
