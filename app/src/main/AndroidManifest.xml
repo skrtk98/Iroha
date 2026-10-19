@@ -43,6 +43,11 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".settings.UserDictionaryActivity"
+            android:exported="false"
+            android:label="ユーザー辞書" />
+
+        <activity
             android:name=".settings.LicensesActivity"
             android:exported="false"
             android:label="ライセンス" />

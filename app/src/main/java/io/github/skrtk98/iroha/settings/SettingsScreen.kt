@@ -243,3 +243,21 @@ private fun SettingsScreenPreview() {
         )
     }
 }
+
+/** 辞書まわりの設定。ユーザー辞書の管理画面への入口と、学習結果の消去。 */
+@Composable
+fun DictionarySection(onOpenUserDictionary: () -> Unit, onClearLearning: () -> Unit) {
+    var confirmed by remember { mutableStateOf(false) }
+    Text(
+        "ユーザー辞書（読み込み・書き出し）",
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenUserDictionary).padding(vertical = 8.dp),
+    )
+    OutlinedButton(
+        onClick = {
+            onClearLearning()
+            confirmed = true
+        },
+        enabled = !confirmed,
+    ) { Text(if (confirmed) "学習結果を消去しました" else "学習結果を消去") }
+}
