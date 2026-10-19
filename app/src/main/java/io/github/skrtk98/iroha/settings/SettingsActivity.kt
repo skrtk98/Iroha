@@ -26,6 +26,7 @@ class SettingsActivity : ComponentActivity() {
                         getSystemService(InputMethodManager::class.java).showInputMethodPicker()
                     },
                     onOpenLicenses = { startActivity(Intent(this, LicensesActivity::class.java)) },
+                    onClearClipboard = { app.clipboardRepository.clearAll() },
                 )
             }
         }

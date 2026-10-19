@@ -45,6 +45,7 @@ data class SettingsUiState(
     val vibrate: Boolean,
     val fullWidthSpace: Boolean,
     val learningEnabled: Boolean,
+    val clipboardHistory: Boolean = true,
 )
 
 /** Settings と画面をつなぐ。値の保持は Settings が持ち、ここでは画面用の状態に写す。 */
@@ -54,6 +55,7 @@ fun SettingsRoute(
     onOpenInputMethodSettings: () -> Unit,
     onShowInputMethodPicker: () -> Unit,
     onOpenLicenses: () -> Unit,
+    onClearClipboard: () -> Unit,
     extraSections: @Composable () -> Unit = {},
 ) {
     fun read() = SettingsUiState(
@@ -62,6 +64,7 @@ fun SettingsRoute(
         vibrate = settings.vibrate,
         fullWidthSpace = settings.fullWidthSpace,
         learningEnabled = settings.learningEnabled,
+        clipboardHistory = settings.clipboardHistory,
     )
     var state by remember { mutableStateOf(read()) }
     fun update(block: Settings.() -> Unit) {
@@ -77,6 +80,8 @@ fun SettingsRoute(
         onVibrateChange = { update { vibrate = it } },
         onFullWidthSpaceChange = { update { fullWidthSpace = it } },
         onLearningChange = { update { learningEnabled = it } },
+        onClipboardHistoryChange = { update { clipboardHistory = it } },
+        onClearClipboard = onClearClipboard,
         onOpenLicenses = onOpenLicenses,
         extraSections = extraSections,
     )
@@ -93,6 +98,8 @@ fun SettingsScreen(
     onVibrateChange: (Boolean) -> Unit,
     onFullWidthSpaceChange: (Boolean) -> Unit,
     onLearningChange: (Boolean) -> Unit,
+    onClipboardHistoryChange: (Boolean) -> Unit,
+    onClearClipboard: () -> Unit,
     onOpenLicenses: () -> Unit,
     modifier: Modifier = Modifier,
     extraSections: @Composable () -> Unit = {},
@@ -151,6 +158,15 @@ fun SettingsScreen(
             extraSections()
 
             HorizontalDivider()
+            SectionTitle("クリップボード")
+            SwitchRow("コピーした文字列を履歴に残す", state.clipboardHistory, onClipboardHistoryChange)
+            Text(
+                "履歴は端末内にだけ保存します。パスワードなど機密扱いのコピーは記録しません。",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(onClick = onClearClipboard) { Text("履歴をすべて消去") }
+
+            HorizontalDivider()
             SectionTitle("このアプリについて")
             Text(
                 "Iroha は完全にオフラインで動作します。インターネット接続の権限を持たず、入力内容を外部に送信しません。",
@@ -201,6 +217,8 @@ private fun SettingsScreenPreview() {
             onVibrateChange = {},
             onFullWidthSpaceChange = {},
             onLearningChange = {},
+            onClipboardHistoryChange = {},
+            onClearClipboard = {},
             onOpenLicenses = {},
         )
     }

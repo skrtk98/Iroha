@@ -32,6 +32,10 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_FULL_WIDTH_SPACE, false)
         set(value) = prefs.edit().putBoolean(KEY_FULL_WIDTH_SPACE, value).apply()
 
+    var clipboardHistory: Boolean
+        get() = prefs.getBoolean(KEY_CLIPBOARD, true)
+        set(value) = prefs.edit().putBoolean(KEY_CLIPBOARD, value).apply()
+
     /** いずれかの設定が変わるたびに Unit を流す。 */
     val changes: Flow<Unit> = callbackFlow {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> trySend(Unit) }
@@ -45,5 +49,6 @@ class Settings(context: Context) {
         const val KEY_VIBRATE = "vibrate"
         const val KEY_LEARNING = "learning"
         const val KEY_FULL_WIDTH_SPACE = "full_width_space"
+        const val KEY_CLIPBOARD = "clipboard_history"
     }
 }
