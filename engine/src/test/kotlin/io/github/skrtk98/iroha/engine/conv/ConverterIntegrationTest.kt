@@ -37,6 +37,14 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun candidateLimitIncludesFallbacks() {
+        assertEquals(1, converter.candidates("かいて", 0, 3, limit = 1).size)
+        val three = converter.candidates("かいて", 0, 3, limit = 3).map { it.surface }
+        assertEquals(3, three.size)
+        assertTrue(three.toString(), "かいて" in three)
+    }
+
+    @Test
     fun suggestsPredictions() {
         val suggestions = converter.suggest("ありがと").map { it.surface }
         assertTrue(suggestions.toString(), "ありがとう" in suggestions)

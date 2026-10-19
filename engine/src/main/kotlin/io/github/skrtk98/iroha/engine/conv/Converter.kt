@@ -86,14 +86,19 @@ class Converter(
             scored.add(Candidate(surface.toString(), segmentReading, cost, node.word.lid, last.word.rid))
         }
         scored.sortBy { it.cost }
+        val fallbackId = dictionary.unknownNounId
+        val fallbacks = listOf(segmentReading, Kana.toKatakana(segmentReading)).distinct()
+            .map { Candidate(it, segmentReading, UNKNOWN_COST, fallbackId, fallbackId) }
+        // ひらがな・カタカナを必ず残せるよう、その分の枠を空けておく
+        val dictionaryLimit = (limit - fallbacks.size).coerceAtLeast(0)
         val result = LinkedHashMap<String, Candidate>()
         for (candidate in scored) {
-            if (result.size >= limit) break
+            if (result.size >= dictionaryLimit) break
             result.putIfAbsent(candidate.surface, candidate)
         }
-        val fallbackId = dictionary.unknownNounId
-        for (surface in listOf(segmentReading, Kana.toKatakana(segmentReading))) {
-            result.putIfAbsent(surface, Candidate(surface, segmentReading, UNKNOWN_COST, fallbackId, fallbackId))
+        for (fallback in fallbacks) {
+            if (result.size >= limit) break
+            result.putIfAbsent(fallback.surface, fallback)
         }
         return result.values.toList()
     }
