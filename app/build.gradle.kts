@@ -1,3 +1,5 @@
+import javax.inject.Inject
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -49,8 +51,43 @@ kotlin {
     jvmToolchain(17)
 }
 
+// engine モジュールが生成した iroha.dic を assets に入れる
+val dictionary = configurations.dependencyScope("dictionary")
+val resolvableDictionary = configurations.resolvable("dictionaryFiles") { extendsFrom(dictionary.get()) }
+
+abstract class CopyDictionaryTask : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val dictionaryFiles: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @get:Inject
+    abstract val fileSystem: FileSystemOperations
+
+    @TaskAction
+    fun copy() {
+        fileSystem.sync {
+            from(dictionaryFiles)
+            into(outputDir)
+        }
+    }
+}
+
+val copyDictionary = tasks.register<CopyDictionaryTask>("copyDictionary") {
+    dictionaryFiles.from(resolvableDictionary)
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(copyDictionary, CopyDictionaryTask::outputDir)
+    }
+}
+
 dependencies {
     implementation(project(":engine"))
+    "dictionary"(project(path = ":engine", configuration = "dictionary"))
 
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
