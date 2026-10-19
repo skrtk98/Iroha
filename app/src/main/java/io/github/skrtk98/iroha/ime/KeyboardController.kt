@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
 /** IME 本体が担う、キーボード以外のプラットフォーム操作。 */
 interface ImeHost {
     fun openSettings()
+    fun requestMicPermission()
     fun switchInputMethod()
     fun hideKeyboard()
 }
@@ -38,6 +39,7 @@ class KeyboardController(
     private val editor: EditorBridge,
     private val host: ImeHost,
     private val clipboard: ClipboardRepository,
+    private val voice: VoiceRecognizer,
 ) {
     private val _state = MutableStateFlow(KeyboardUiState(loading = true))
     val state: StateFlow<KeyboardUiState> = _state.asStateFlow()
@@ -100,6 +102,8 @@ class KeyboardController(
 
     fun onFinishInput() {
         resetComposition()
+        voice.cancel()
+        _state.update { if (it.panel == Panel.Voice) it.copy(panel = Panel.None, voice = VoiceUiState()) else it }
     }
 
     /** エディタ側でカーソルが未確定文字列の外へ動いたら、入力を打ち切る。 */
@@ -145,9 +149,13 @@ class KeyboardController(
             is KeyAction.OpenPanel -> {
                 commitAll()
                 if (action.panel == Panel.Clipboard) clipboard.ensureLoaded()
+                if (action.panel != Panel.Voice) voice.cancel()
                 _state.update { it.copy(panel = action.panel, selecting = false, candidateListExpanded = false) }
             }
-            KeyAction.ClosePanel -> _state.update { it.copy(panel = Panel.None, selecting = false) }
+            KeyAction.ClosePanel -> {
+                voice.cancel()
+                _state.update { it.copy(panel = Panel.None, selecting = false, voice = VoiceUiState()) }
+            }
             is KeyAction.Cursor -> cursor(action.command)
             is KeyAction.PasteClip -> {
                 commitAll()
@@ -156,6 +164,9 @@ class KeyboardController(
             is KeyAction.TogglePinClip -> clipboard.togglePin(action.text)
             is KeyAction.DeleteClip -> clipboard.remove(action.text)
             KeyAction.ClearClips -> clipboard.clearUnpinned()
+            KeyAction.StartVoice -> startVoice()
+            KeyAction.StopVoice -> voice.stop()
+            KeyAction.RequestMicPermission -> host.requestMicPermission()
             KeyAction.OpenSettings -> host.openSettings()
             KeyAction.SwitchInputMethod -> host.switchInputMethod()
             KeyAction.HideKeyboard -> host.hideKeyboard()
@@ -283,6 +294,39 @@ class KeyboardController(
     private fun switchFace(face: KeyboardFace) {
         commitAll()
         _state.update { it.copy(face = face, shifted = false) }
+    }
+
+    private fun startVoice() {
+        commitAll()
+        if (!voice.hasPermission) {
+            _state.update { it.copy(panel = Panel.Voice, voice = VoiceUiState(VoiceStatus.NeedsPermission)) }
+            return
+        }
+        _state.update {
+            it.copy(panel = Panel.Voice, voice = VoiceUiState(VoiceStatus.Listening, onDevice = voice.isOnDevice))
+        }
+        voice.start(
+            object : VoiceListener {
+                override fun onPartial(text: String) {
+                    _state.update { it.copy(voice = it.voice.copy(partial = text)) }
+                }
+
+                override fun onResult(text: String) {
+                    editor.commitText(text)
+                    _state.update { it.copy(voice = it.voice.copy(partial = text)) }
+                }
+
+                override fun onError(message: String) {
+                    _state.update { it.copy(voice = it.voice.copy(status = VoiceStatus.Error, message = message)) }
+                }
+
+                override fun onFinished() {
+                    _state.update {
+                        if (it.voice.status == VoiceStatus.Listening) it.copy(voice = it.voice.copy(status = VoiceStatus.Idle)) else it
+                    }
+                }
+            },
+        )
     }
 
     private fun defaultFace(): KeyboardFace =

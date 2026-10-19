@@ -47,13 +47,19 @@ sealed interface KeyAction {
     data class DeleteClip(val text: String) : KeyAction
     data object ClearClips : KeyAction
 
+    data object StartVoice : KeyAction
+    data object StopVoice : KeyAction
+
+    /** マイクの権限を得るため設定画面を開く。 */
+    data object RequestMicPermission : KeyAction
+
     data object OpenSettings : KeyAction
     data object SwitchInputMethod : KeyAction
     data object HideKeyboard : KeyAction
 }
 
 /** キーボード領域に出すパネル。 */
-enum class Panel { None, Cursor, Clipboard }
+enum class Panel { None, Cursor, Clipboard, Voice }
 
 enum class CursorCommand {
     Left, Right, Up, Down, LineStart, LineEnd,

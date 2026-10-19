@@ -56,7 +56,14 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
             editorInfo = { currentInputEditorInfo },
             highlightColor = PREEDIT_HIGHLIGHT,
         )
-        controller = KeyboardController(lifecycleScope, app.settings, bridge, this, app.clipboardRepository)
+        controller = KeyboardController(
+            lifecycleScope,
+            app.settings,
+            bridge,
+            this,
+            app.clipboardRepository,
+            AndroidVoiceRecognizer(this),
+        )
         lifecycleScope.launch { controller.onEngineLoaded(app.engineRepository.load()) }
         clipboardManager.addPrimaryClipChangedListener(clipListener)
     }
@@ -115,6 +122,14 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
 
     override fun openSettings() {
         startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    override fun requestMicPermission() {
+        startActivity(
+            Intent(this, SettingsActivity::class.java)
+                .putExtra(SettingsActivity.EXTRA_REQUEST_MIC, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     override fun switchInputMethod() {
