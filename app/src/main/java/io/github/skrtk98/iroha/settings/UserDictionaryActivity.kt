@@ -110,7 +110,18 @@ class UserDictionaryActivity : ComponentActivity() {
         lifecycleScope.launch {
             val result = runCatching {
                 val text = withContext(Dispatchers.IO) {
-                    contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        // 辞書として現実的な大きさを超えるファイルは、メモリを使い切る前に断る
+                        val out = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            out.write(buffer, 0, n)
+                            if (out.size() > MAX_IMPORT_BYTES) error("ファイルが大きすぎます（上限 ${MAX_IMPORT_BYTES / 1_000_000}MB）")
+                        }
+                        out.toByteArray().decodeToString()
+                    }
                 } ?: error("ファイルを開けません")
                 UserDictionaryTsv.parse(text)
             }
@@ -137,6 +148,10 @@ class UserDictionaryActivity : ComponentActivity() {
             }.onSuccess { message = "${words.size} 語を書き出しました" }
                 .onFailure { message = "書き出しに失敗しました: ${it.message}" }
         }
+    }
+
+    private companion object {
+        const val MAX_IMPORT_BYTES = 10_000_000
     }
 }
 
