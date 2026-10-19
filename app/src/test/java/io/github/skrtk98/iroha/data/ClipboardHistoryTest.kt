@@ -42,4 +42,17 @@ class ClipboardHistoryTest {
         restored.deserialize(h.serialize())
         assertEquals(h.entries, restored.entries)
     }
+
+    @Test
+    fun pinningStopsAtTheLimit() {
+        val h = ClipboardHistory(maxUnpinned = 10, maxPinned = 1)
+        h.add("a", 1)
+        h.add("b", 2)
+        h.togglePin("a")
+        h.togglePin("b")
+        assertEquals(listOf("a"), h.entries.filter { it.pinned }.map { it.text })
+        h.togglePin("a")
+        h.togglePin("b")
+        assertEquals(listOf("b"), h.entries.filter { it.pinned }.map { it.text })
+    }
 }

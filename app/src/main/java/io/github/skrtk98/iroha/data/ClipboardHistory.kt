@@ -13,7 +13,7 @@ data class ClipEntry(
  * クリップボード履歴の並び。新しいものが先頭で、固定したものは件数の上限で消えない。
  * 不変のリストを返すので、そのまま UI 状態に載せられる。
  */
-class ClipboardHistory(private val maxUnpinned: Int = 30) {
+class ClipboardHistory(private val maxUnpinned: Int = 30, private val maxPinned: Int = 50) {
 
     var entries: List<ClipEntry> = emptyList()
         private set
@@ -27,7 +27,10 @@ class ClipboardHistory(private val maxUnpinned: Int = 30) {
         entries = listOf(entry) + rest.filter { it.pinned || ++unpinned <= maxUnpinned }
     }
 
+    /** 固定数が上限に達しているときは新たに固定しない。固定の解除はいつでもできる。 */
     fun togglePin(text: String) {
+        val target = entries.firstOrNull { it.text == text } ?: return
+        if (!target.pinned && entries.count { it.pinned } >= maxPinned) return
         entries = entries.map { if (it.text == text) it.copy(pinned = !it.pinned) else it }
     }
 
