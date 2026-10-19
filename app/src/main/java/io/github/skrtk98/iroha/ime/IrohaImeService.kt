@@ -89,7 +89,8 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        controller.commitAll()
+        // ここでは確定しない。入力欄の切り替え時は currentInputConnection が既に次の欄を指しており、
+        // 未確定文字列が別の欄に入ってしまう。元の欄の未確定文字列は欄自身がフォーカス喪失時に確定する。
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         super.onFinishInputView(finishingInput)
     }
