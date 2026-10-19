@@ -17,6 +17,12 @@ interface EditorBridge {
     fun deleteBackward()
     fun sendEnter()
     fun moveCursor(delta: Int)
+
+    /** 方向キーなどのキーイベントを送る。[select] なら Shift を押した状態で送り、選択範囲を伸ばす。 */
+    fun sendNavigationKey(keyCode: Int, select: Boolean)
+
+    /** android.R.id.copy などのコンテキストメニュー操作。 */
+    fun performContextMenuAction(id: Int)
 }
 
 class InputConnectionBridge(
@@ -80,6 +86,18 @@ class InputConnectionBridge(
         val ic = connection() ?: return
         val code = if (delta < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
         repeat(kotlin.math.abs(delta)) { sendKey(ic, code) }
+    }
+
+    override fun sendNavigationKey(keyCode: Int, select: Boolean) {
+        val ic = connection() ?: return
+        val meta = if (select) KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON else 0
+        val now = android.os.SystemClock.uptimeMillis()
+        ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta))
+        ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta))
+    }
+
+    override fun performContextMenuAction(id: Int) {
+        connection()?.performContextMenuAction(id)
     }
 
     private fun sendKey(ic: InputConnection, code: Int) {

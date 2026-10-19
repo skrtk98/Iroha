@@ -53,6 +53,7 @@ import io.github.skrtk98.iroha.data.KeyboardLayout
 import io.github.skrtk98.iroha.ime.KeyAction
 import io.github.skrtk98.iroha.ime.KeyboardFace
 import io.github.skrtk98.iroha.ime.KeyboardUiState
+import io.github.skrtk98.iroha.ime.Panel
 import io.github.skrtk98.iroha.ui.theme.IrohaTheme
 
 private val BarHeight = 44.dp
@@ -82,6 +83,8 @@ fun KeyboardScreen(
             val keyboardHeight = state.keyHeightDp.dp * 4
             if (state.candidateListExpanded && state.composing) {
                 CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+            } else if (state.panel == Panel.Cursor) {
+                CursorPanel(state.selecting, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             } else {
                 KeyboardArea(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             }
@@ -146,6 +149,9 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
 private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         ToolbarButton(R.drawable.ic_settings, "設定") { onAction(KeyAction.OpenSettings) }
+        ToolbarButton(R.drawable.ic_open_with, "カーソル移動") {
+            onAction(if (state.panel == Panel.Cursor) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Cursor))
+        }
         ToolbarButton(R.drawable.ic_dialpad, "テンキー") { onAction(KeyAction.ToggleNumberPad) }
         val other = if (state.layout == KeyboardLayout.Flick) KeyboardLayout.Qwerty else KeyboardLayout.Flick
         ToolbarButton(R.drawable.ic_keyboard, "配列を切り替え") { onAction(KeyAction.SwitchLayout(other)) }
