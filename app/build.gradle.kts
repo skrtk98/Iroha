@@ -37,6 +37,8 @@ android {
     }
     androidResources {
         localeFilters += listOf("ja", "en")
+        // 辞書は APK から直接 mmap するため圧縮しない
+        noCompress += "dic"
     }
     packaging {
         resources {
