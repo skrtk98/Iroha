@@ -33,4 +33,7 @@ data class KeyboardUiState(
     val keyHeightDp: Int = 52,
     val vibrate: Boolean = true,
     val loading: Boolean = false,
+    val panel: Panel = Panel.None,
+    /** カーソルモードで選択範囲を伸ばしているか。 */
+    val selecting: Boolean = false,
 )

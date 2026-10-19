@@ -35,7 +35,22 @@ sealed interface KeyAction {
     /** 変換中の文節を伸縮する。 */
     data class ResizeSegment(val delta: Int) : KeyAction
 
+    /** キーボードの代わりに表示するパネルを切り替える。 */
+    data class OpenPanel(val panel: Panel) : KeyAction
+    data object ClosePanel : KeyAction
+
+    /** カーソルモードの操作。 */
+    data class Cursor(val command: CursorCommand) : KeyAction
+
     data object OpenSettings : KeyAction
     data object SwitchInputMethod : KeyAction
     data object HideKeyboard : KeyAction
+}
+
+/** キーボード領域に出すパネル。 */
+enum class Panel { None, Cursor }
+
+enum class CursorCommand {
+    Left, Right, Up, Down, LineStart, LineEnd,
+    ToggleSelection, SelectAll, Copy, Cut, Paste,
 }

@@ -1,6 +1,7 @@
 package io.github.skrtk98.iroha.ime
 
 import android.text.InputType
+import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import io.github.skrtk98.iroha.data.Engine
 import io.github.skrtk98.iroha.data.KeyboardLayout
@@ -87,6 +88,8 @@ class KeyboardController(
                 keyHeightDp = settings.keyHeightDp,
                 vibrate = settings.vibrate,
                 candidateListExpanded = false,
+                panel = if (restarting) it.panel else Panel.None,
+                selecting = restarting && it.selecting,
             )
         }
         render()
@@ -136,6 +139,12 @@ class KeyboardController(
             is KeyAction.SelectCandidate -> selectCandidate(action.index)
             KeyAction.ToggleCandidateList -> _state.update { it.copy(candidateListExpanded = !it.candidateListExpanded) }
             is KeyAction.ResizeSegment -> if (session?.resizeSegment(action.delta) == true) render()
+            is KeyAction.OpenPanel -> {
+                commitAll()
+                _state.update { it.copy(panel = action.panel, selecting = false, candidateListExpanded = false) }
+            }
+            KeyAction.ClosePanel -> _state.update { it.copy(panel = Panel.None, selecting = false) }
+            is KeyAction.Cursor -> cursor(action.command)
             KeyAction.OpenSettings -> host.openSettings()
             KeyAction.SwitchInputMethod -> host.switchInputMethod()
             KeyAction.HideKeyboard -> host.hideKeyboard()
@@ -208,6 +217,47 @@ class KeyboardController(
         if (committed.isNotEmpty()) editor.commitText(committed)
         _state.update { it.copy(candidateListExpanded = false) }
         render()
+    }
+
+    private fun cursor(command: CursorCommand) {
+        val selecting = _state.value.selecting
+        when (command) {
+            CursorCommand.Left -> editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_LEFT, selecting)
+            CursorCommand.Right -> editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_RIGHT, selecting)
+            CursorCommand.Up -> editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_UP, selecting)
+            CursorCommand.Down -> editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_DOWN, selecting)
+            CursorCommand.LineStart -> editor.sendNavigationKey(KeyEvent.KEYCODE_MOVE_HOME, selecting)
+            CursorCommand.LineEnd -> editor.sendNavigationKey(KeyEvent.KEYCODE_MOVE_END, selecting)
+            CursorCommand.ToggleSelection -> {
+                if (selecting) collapseSelection()
+                _state.update { it.copy(selecting = !selecting) }
+            }
+            CursorCommand.SelectAll -> {
+                editor.performContextMenuAction(android.R.id.selectAll)
+                _state.update { it.copy(selecting = true) }
+            }
+            CursorCommand.Copy -> {
+                editor.performContextMenuAction(android.R.id.copy)
+                collapseSelection()
+                _state.update { it.copy(selecting = false) }
+            }
+            CursorCommand.Cut -> {
+                editor.performContextMenuAction(android.R.id.cut)
+                _state.update { it.copy(selecting = false) }
+            }
+            CursorCommand.Paste -> {
+                editor.performContextMenuAction(android.R.id.paste)
+                _state.update { it.copy(selecting = false) }
+            }
+        }
+    }
+
+    /**
+     * 選択を解除して末尾にカーソルを置く。setSelection は直前のコピーより先に反映されることがあるため、
+     * 同じキューを通る方向キーで解除する。
+     */
+    private fun collapseSelection() {
+        editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_RIGHT, select = false)
     }
 
     private fun cycleFlickMode() {
