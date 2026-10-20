@@ -62,7 +62,9 @@ class EngineRepository(
         }
         val userDictionary = UserDictionary(dictionary::posId)
         if (userDictionaryFile.exists()) {
-            userDictionary.replaceAll(UserDictionaryTsv.parse(userDictionaryFile.readText()).words)
+            // 上限は新しく追加するときだけ効かせる。保存済みの辞書が上限を超えていても起動は止めない
+            val saved = UserDictionaryTsv.parse(userDictionaryFile.readText(), maxWords = Int.MAX_VALUE).words
+            userDictionary.replaceAll(saved)
         }
         val learning = LearningStore()
         if (learningFile.exists()) learning.deserialize(learningFile.readText())
