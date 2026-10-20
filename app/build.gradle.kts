@@ -1,3 +1,4 @@
+import java.util.Properties
 import javax.inject.Inject
 
 plugins {
@@ -16,13 +17,34 @@ android {
         versionName = "0.1.0"
     }
 
+    // 署名の設定はリポジトリの外の signing.properties から読む（書式は signing.properties.example）。
+    // 場所は -Piroha.signing.file で変えられ、使う鍵は -Piroha.signing.key=app|upload で選ぶ（既定は app）。
+    // ファイルが無ければ release は未署名で出力する（F-Droid のビルドサーバーや、鍵を持たない人のビルド）。
+    val signingFile = rootProject.file(providers.gradleProperty("iroha.signing.file").getOrElse("signing.properties"))
+    // fileContents 経由で読むと、ファイルの有無と中身の変化を configuration cache が追跡する
+    val signingText = providers.fileContents(rootProject.layout.projectDirectory.file(signingFile.absolutePath)).asText
+    val releaseSigning = if (signingText.isPresent) {
+        val keyName = providers.gradleProperty("iroha.signing.key").getOrElse("app")
+        require(keyName == "app" || keyName == "upload") { "iroha.signing.key must be app or upload: $keyName" }
+        val props = Properties().apply { signingText.get().reader().use { load(it) } }
+        fun prop(name: String): String = props.getProperty("$keyName.$name")?.takeIf { it.isNotBlank() }
+            ?: error("$signingFile has no $keyName.$name")
+        signingConfigs.create("release") {
+            storeFile = file(prop("storeFile"))
+            storePassword = prop("password")
+            keyAlias = prop("keyAlias")
+            keyPassword = prop("password")
+        }
+    } else {
+        null
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // 署名鍵が未設定でも動作確認できるよう debug 鍵で署名する。配布時は差し替えること。
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = releaseSigning
         }
     }
     compileOptions {
@@ -39,6 +61,12 @@ android {
         localeFilters += listOf("ja", "en")
         // 辞書は APK から直接 mmap するため圧縮しない
         noCompress += "dic"
+    }
+    dependenciesInfo {
+        // APK に Google 署名の依存情報ブロックを入れない。F-Droid が中身を検証できず、再現ビルドの妨げになる。
+        // Play に出す AAB には残す。
+        includeInApk = false
+        includeInBundle = true
     }
     packaging {
         resources {
