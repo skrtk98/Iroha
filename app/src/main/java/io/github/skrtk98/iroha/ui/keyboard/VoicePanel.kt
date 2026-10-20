@@ -62,14 +62,6 @@ fun VoicePanel(
                 VoiceStatus.Idle -> voice.partial.ifEmpty { "マイクを押すと話せます" }
             }
             Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
-            if (!voice.onDevice && voice.status == VoiceStatus.Listening) {
-                Text(
-                    "この端末は端末内認識に対応していないため、システムの音声認識を使います",
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                )
-            }
         }
         Row(Modifier.fillMaxWidth().height(52.dp)) {
             TextKey("キーボードに戻る", { onAction(KeyAction.ClosePanel) }, Modifier.weight(1f), KeyStyle.Function, 15.sp)

@@ -38,16 +38,22 @@ class UserDictionary(private val posId: (UserPos) -> Int) : WordSource {
     }
 
     @Synchronized
-    fun add(word: UserWord) = replaceAll(words.filterNot { it.reading == word.reading && it.surface == word.surface } + word)
+    fun add(word: UserWord) {
+        val rest = words.filterNot { it.reading == word.reading && it.surface == word.surface }
+        if (rest.size >= MAX_WORDS) throw TooManyWordsException(MAX_WORDS)
+        replaceAll(rest + word)
+    }
 
     @Synchronized
     fun remove(word: UserWord) = replaceAll(words - word)
 
-    /** 既存の語に [imported] を加える。追加された語数を返す。 */
+    /** 既存の語に [imported] を加える。追加された語数を返す。上限を超えるときは何も変えずに例外を投げる。 */
     @Synchronized
     fun merge(imported: List<UserWord>): Int {
         val before = words.size
-        replaceAll(words + imported)
+        val merged = (words + imported).distinctBy { it.reading to it.surface }
+        if (merged.size > MAX_WORDS) throw TooManyWordsException(MAX_WORDS)
+        replaceAll(merged)
         return words.size - before
     }
 
@@ -65,6 +71,9 @@ class UserDictionary(private val posId: (UserPos) -> Int) : WordSource {
     override val maxReadingLength: Int get() = snapshot.maxLength
 
     companion object {
+        /** 登録できる語数の上限。Mozc の 1 辞書あたりの上限より小さく、端末のメモリに収まる大きさ。 */
+        const val MAX_WORDS = 100_000
+
         private const val USER_WORD_COST = 2000
     }
 }

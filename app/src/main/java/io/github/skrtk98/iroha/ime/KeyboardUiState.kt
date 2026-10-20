@@ -25,7 +25,6 @@ data class VoiceUiState(
     val status: VoiceStatus = VoiceStatus.Idle,
     val partial: String = "",
     val message: String = "",
-    val onDevice: Boolean = true,
 )
 
 @Immutable
