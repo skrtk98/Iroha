@@ -304,7 +304,7 @@ class KeyboardController(
             return
         }
         _state.update {
-            it.copy(panel = Panel.Voice, voice = VoiceUiState(VoiceStatus.Listening, onDevice = voice.isOnDevice))
+            it.copy(panel = Panel.Voice, voice = VoiceUiState(VoiceStatus.Listening))
         }
         voice.start(
             object : VoiceListener {

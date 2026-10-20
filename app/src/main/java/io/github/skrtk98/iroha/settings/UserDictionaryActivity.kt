@@ -52,12 +52,16 @@ import io.github.skrtk98.iroha.data.EngineRepository
 import io.github.skrtk98.iroha.engine.dict.UserPos
 import io.github.skrtk98.iroha.engine.text.Kana
 import io.github.skrtk98.iroha.engine.user.UserDictionary
+import io.github.skrtk98.iroha.engine.user.TooManyWordsException
 import io.github.skrtk98.iroha.engine.user.UserDictionaryTsv
 import io.github.skrtk98.iroha.engine.user.UserWord
 import io.github.skrtk98.iroha.ui.theme.IrohaTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.FilterInputStream
+import java.io.IOException
+import java.io.InputStream
 
 /**
  * ユーザー辞書の一覧・追加・削除と、Google 日本語入力 / Mozc 互換 TSV の読み込み・書き出し。
@@ -101,7 +105,11 @@ class UserDictionaryActivity : ComponentActivity() {
 
     private fun update(block: (UserDictionary) -> Unit) {
         lifecycleScope.launch {
-            repository.updateUserDictionary(block)
+            try {
+                repository.updateUserDictionary(block)
+            } catch (e: TooManyWordsException) {
+                message = "登録できるのは ${e.limit} 語までです"
+            }
             words = repository.userWords()
         }
     }
@@ -109,32 +117,33 @@ class UserDictionaryActivity : ComponentActivity() {
     private fun importFrom(uri: Uri) {
         lifecycleScope.launch {
             val result = runCatching {
-                val text = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     contentResolver.openInputStream(uri)?.use { input ->
-                        // 辞書として現実的な大きさを超えるファイルは、メモリを使い切る前に断る
-                        val out = java.io.ByteArrayOutputStream()
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            val n = input.read(buffer)
-                            if (n < 0) break
-                            out.write(buffer, 0, n)
-                            if (out.size() > MAX_IMPORT_BYTES) error("ファイルが大きすぎます（上限 ${MAX_IMPORT_BYTES / 1_000_000}MB）")
+                        // 1 行ずつ読み、バイト数と語数の上限を超えたらそこで止める
+                        LimitedInputStream(input, MAX_IMPORT_BYTES).bufferedReader().useLines { lines ->
+                            UserDictionaryTsv.parse(lines)
                         }
-                        out.toByteArray().decodeToString()
                     }
                 } ?: error("ファイルを開けません")
-                UserDictionaryTsv.parse(text)
-            }
-            result.onSuccess { parsed ->
+            }.mapCatching { parsed ->
                 var added = 0
                 repository.updateUserDictionary { added = it.merge(parsed.words) }
-                words = repository.userWords()
+                parsed to added
+            }
+            words = repository.userWords()
+            result.onSuccess { (parsed, added) ->
                 message = buildString {
                     append("${added} 語を追加しました")
                     if (parsed.skippedLines > 0) append("（読めない行 ${parsed.skippedLines} 行）")
                 }
-            }.onFailure { message = "読み込みに失敗しました: ${it.message}" }
+            }.onFailure { message = "読み込みに失敗しました: ${importErrorMessage(it)}" }
         }
+    }
+
+    private fun importErrorMessage(error: Throwable): String = when (error) {
+        is TooManyWordsException -> "登録できるのは ${error.limit} 語までです"
+        is FileTooLargeException -> "ファイルが大きすぎます（上限 ${MAX_IMPORT_BYTES / 1_000_000}MB）"
+        else -> error.message ?: error.javaClass.simpleName
     }
 
     private fun exportTo(uri: Uri) {
@@ -276,4 +285,20 @@ private fun AddWordDialog(onDismiss: () -> Unit, onAdd: (UserWord) -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
     )
+}
+
+private class FileTooLargeException : IOException("file too large")
+
+/** [limit] バイトを超えて読もうとしたら [FileTooLargeException] を投げる。 */
+private class LimitedInputStream(input: InputStream, private val limit: Int) : FilterInputStream(input) {
+    private var count = 0L
+
+    override fun read(): Int = super.read().also { if (it >= 0) count(1) }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int = super.read(b, off, len).also { if (it > 0) count(it) }
+
+    private fun count(n: Int) {
+        count += n
+        if (count > limit) throw FileTooLargeException()
+    }
 }
