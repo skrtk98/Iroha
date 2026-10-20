@@ -23,7 +23,7 @@ interface VoiceListener {
 interface VoiceRecognizer {
     val hasPermission: Boolean
 
-    /** 端末内で認識できる（ネットワークを使わない）か。 */
+    /** 端末内で認識できる（ネットワークを使わない）か。できないときは音声入力を使わせない。 */
     val isOnDevice: Boolean
     fun start(listener: VoiceListener)
     fun stop()
@@ -31,8 +31,8 @@ interface VoiceRecognizer {
 }
 
 /**
- * 端末内認識 (API 31+) が使えればそれを使い、使えなければオフライン優先を指定した通常の認識を使う。
- * メインスレッドから呼ぶこと。
+ * 端末内認識 (API 31+) だけを使う。システムの通常の認識サービスは音声を端末の外で処理しうるため、
+ * 端末内認識が無い端末では音声入力を使えないことにする。メインスレッドから呼ぶこと。
  */
 class AndroidVoiceRecognizer(private val context: Context) : VoiceRecognizer {
     private var recognizer: SpeechRecognizer? = null
@@ -47,23 +47,18 @@ class AndroidVoiceRecognizer(private val context: Context) : VoiceRecognizer {
 
     override fun start(listener: VoiceListener) {
         cancel()
-        val created = when {
-            isOnDevice -> SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-            SpeechRecognizer.isRecognitionAvailable(context) -> SpeechRecognizer.createSpeechRecognizer(context)
-            else -> null
-        }
-        if (created == null) {
-            listener.onError("この端末では音声認識を使えません")
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !isOnDevice) {
+            listener.onError("この端末は端末内の音声認識に対応していないため、音声入力を使えません")
             listener.onFinished()
             return
         }
+        val created = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         recognizer = created
         created.setRecognitionListener(Listener(listener))
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ja-JP")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
         }
         created.startListening(intent)
@@ -113,8 +108,7 @@ class AndroidVoiceRecognizer(private val context: Context) : VoiceRecognizer {
         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "聞き取れませんでした"
         SpeechRecognizer.ERROR_AUDIO -> "マイクを使えません"
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "マイクの権限がありません"
-        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-            "端末内の音声認識データがありません。端末の設定で日本語のオフライン音声認識をダウンロードしてください"
+        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
         SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
             "日本語の端末内音声認識データがありません。端末の設定の「オンデバイス音声認識」で日本語をダウンロードしてください"
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "音声認識が使用中です"

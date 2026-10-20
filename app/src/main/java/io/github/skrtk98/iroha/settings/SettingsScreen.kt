@@ -175,7 +175,7 @@ fun SettingsScreen(
             HorizontalDivider()
             SectionTitle("音声入力")
             Text(
-                "端末内の音声認識を使います。対応していない端末では、オフライン優先でシステムの音声認識を使います。",
+                "端末内の音声認識だけを使い、音声を外部に送りません。Android 12 以降で端末内認識に対応した端末が必要です。日本語の認識データは端末の設定からダウンロードしてください。",
                 style = MaterialTheme.typography.bodySmall,
             )
             if (micGranted) {

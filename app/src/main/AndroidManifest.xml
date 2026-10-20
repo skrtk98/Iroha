@@ -4,12 +4,6 @@
     <!-- 音声入力だけで使う。インターネット権限は持たない。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <queries>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
-        </intent>
-    </queries>
-
     <application
         android:name=".IrohaApplication"
         android:allowBackup="false"
