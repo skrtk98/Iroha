@@ -16,13 +16,26 @@ android {
         versionName = "0.1.0"
     }
 
+    // 署名鍵はリポジトリに置かない。~/.gradle/gradle.properties か -Piroha.signing.* で渡す。
+    // 未設定なら release は未署名で出力する（F-Droid のビルドサーバーや、鍵を持たない人のビルド）。
+    val signingStoreFile = providers.gradleProperty("iroha.signing.storeFile")
+    val releaseSigning = if (signingStoreFile.isPresent) {
+        signingConfigs.create("release") {
+            storeFile = file(signingStoreFile.get())
+            storePassword = providers.gradleProperty("iroha.signing.storePassword").get()
+            keyAlias = providers.gradleProperty("iroha.signing.keyAlias").get()
+            keyPassword = providers.gradleProperty("iroha.signing.keyPassword").get()
+        }
+    } else {
+        null
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // 署名鍵が未設定でも動作確認できるよう debug 鍵で署名する。配布時は差し替えること。
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = releaseSigning
         }
     }
     compileOptions {
@@ -39,6 +52,12 @@ android {
         localeFilters += listOf("ja", "en")
         // 辞書は APK から直接 mmap するため圧縮しない
         noCompress += "dic"
+    }
+    dependenciesInfo {
+        // APK に Google 署名の依存情報ブロックを入れない。F-Droid が中身を検証できず、再現ビルドの妨げになる。
+        // Play に出す AAB には残す。
+        includeInApk = false
+        includeInBundle = true
     }
     packaging {
         resources {
