@@ -39,6 +39,10 @@ class EngineRepository(
     private val appScope: CoroutineScope,
 ) {
     private val mutex = Mutex()
+
+    // load() の mutex とは分ける。Mutex は再入できず、更新の中で load() を呼ぶため。
+    private val userDictionaryMutex = Mutex()
+    private val learningMutex = Mutex()
     private val _engine = MutableStateFlow<Engine?>(null)
     val engine: StateFlow<Engine?> = _engine.asStateFlow()
 
@@ -65,12 +69,17 @@ class EngineRepository(
         return Engine(dictionary, userDictionary, learning)
     }
 
-    /** ユーザー辞書を変更して保存する。 */
+    /**
+     * ユーザー辞書を変更して保存する。変更から保存までを直列にするので、
+     * 追加・削除・読み込みが重なっても、最後の変更まで含んだ内容がファイルに残る。
+     */
     suspend fun updateUserDictionary(block: (UserDictionary) -> Unit) {
         val engine = load()
-        block(engine.userDictionary)
-        withContext(Dispatchers.IO) {
-            writeAtomically(userDictionaryFile, UserDictionaryTsv.format(engine.userDictionary.words))
+        userDictionaryMutex.withLock {
+            block(engine.userDictionary)
+            withContext(Dispatchers.IO) {
+                writeAtomically(userDictionaryFile, UserDictionaryTsv.format(engine.userDictionary.words))
+            }
         }
     }
 
@@ -80,20 +89,30 @@ class EngineRepository(
     fun saveLearningAsync() {
         val engine = _engine.value ?: return
         appScope.launch(Dispatchers.IO) {
-            runCatching { writeAtomically(learningFile, engine.learning.serialize()) }
-                .onFailure { Log.w(TAG, "failed to save learning", it) }
+            learningMutex.withLock {
+                runCatching { writeAtomically(learningFile, engine.learning.serialize()) }
+                    .onFailure { Log.w(TAG, "failed to save learning", it) }
+            }
         }
     }
 
     suspend fun clearLearning() {
-        load().learning.clear()
-        withContext(Dispatchers.IO) { learningFile.delete() }
+        val engine = load()
+        learningMutex.withLock {
+            engine.learning.clear()
+            withContext(Dispatchers.IO) { learningFile.delete() }
+        }
     }
 
+    /** 一時ファイルに書いてから置き換える。一時ファイル名は書き込みごとに変え、途中で失敗したら消す。 */
     private fun writeAtomically(file: File, text: String) {
-        val temp = File(file.parentFile, file.name + ".tmp")
-        temp.writeText(text)
-        check(temp.renameTo(file)) { "rename failed: $file" }
+        val temp = File.createTempFile(file.name, ".tmp", file.parentFile)
+        try {
+            temp.writeText(text)
+            check(temp.renameTo(file)) { "rename failed: $file" }
+        } finally {
+            temp.delete()
+        }
     }
 
     private companion object {
