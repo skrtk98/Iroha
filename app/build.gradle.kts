@@ -1,3 +1,4 @@
+import java.util.Properties
 import javax.inject.Inject
 
 plugins {
@@ -16,15 +17,23 @@ android {
         versionName = "0.1.0"
     }
 
-    // 署名鍵はリポジトリに置かない。~/.gradle/gradle.properties か -Piroha.signing.* で渡す。
-    // 未設定なら release は未署名で出力する（F-Droid のビルドサーバーや、鍵を持たない人のビルド）。
-    val signingStoreFile = providers.gradleProperty("iroha.signing.storeFile")
-    val releaseSigning = if (signingStoreFile.isPresent) {
+    // 署名の設定はリポジトリの外の signing.properties から読む（書式は signing.properties.example）。
+    // 場所は -Piroha.signing.file で変えられ、使う鍵は -Piroha.signing.key=app|upload で選ぶ（既定は app）。
+    // ファイルが無ければ release は未署名で出力する（F-Droid のビルドサーバーや、鍵を持たない人のビルド）。
+    val signingFile = rootProject.file(providers.gradleProperty("iroha.signing.file").getOrElse("signing.properties"))
+    // fileContents 経由で読むと、ファイルの有無と中身の変化を configuration cache が追跡する
+    val signingText = providers.fileContents(rootProject.layout.projectDirectory.file(signingFile.absolutePath)).asText
+    val releaseSigning = if (signingText.isPresent) {
+        val keyName = providers.gradleProperty("iroha.signing.key").getOrElse("app")
+        require(keyName == "app" || keyName == "upload") { "iroha.signing.key must be app or upload: $keyName" }
+        val props = Properties().apply { signingText.get().reader().use { load(it) } }
+        fun prop(name: String): String = props.getProperty("$keyName.$name")?.takeIf { it.isNotBlank() }
+            ?: error("$signingFile has no $keyName.$name")
         signingConfigs.create("release") {
-            storeFile = file(signingStoreFile.get())
-            storePassword = providers.gradleProperty("iroha.signing.storePassword").get()
-            keyAlias = providers.gradleProperty("iroha.signing.keyAlias").get()
-            keyPassword = providers.gradleProperty("iroha.signing.keyPassword").get()
+            storeFile = file(prop("storeFile"))
+            storePassword = prop("password")
+            keyAlias = prop("keyAlias")
+            keyPassword = prop("password")
         }
     } else {
         null

@@ -1,0 +1,28 @@
+# Iroha の署名鍵の設定。
+# このファイルを signing.properties にコピーし、値を埋めてから `chmod 600 signing.properties` すること。
+# signing.properties と鍵ファイルは .gitignore 済み。リポジトリには入れない。
+#
+# 鍵は 2 本使う。
+#   app    : アプリ署名鍵。直接配布と F-Droid（再現ビルド）の APK に署名し、Play App Signing にも預ける。なくすと更新できなくなる。
+#   upload : アップロード鍵。Google Play に提出する AAB に署名する。なくしても Google に申請して差し替えられる。
+#
+# 鍵の作成: scripts/create-signing-key.sh app   （upload も同様）
+# 署名付きビルド: ./gradlew clean :app:assembleRelease                         （app で署名）
+#                 ./gradlew clean :app:bundleRelease -Piroha.signing.key=upload （upload で署名）
+
+# 鍵ストアの場所。リポジトリの外に置く。~ は使えないので絶対パスで書く。
+app.storeFile=/home/you/keys/iroha-app.p12
+# 鍵ストアと鍵のパスワード（PKCS12 では両者は同じ）。
+app.password=
+# 鍵のエイリアス。
+app.keyAlias=iroha
+# 証明書の所有者。作成時だけ使う。
+app.dname=CN=Your Name, O=Iroha, C=JP
+# 有効日数。作成時だけ使う。Play は 2033 年 10 月 22 日以降まで有効な鍵を求める。
+app.validityDays=10000
+
+upload.storeFile=/home/you/keys/iroha-upload.p12
+upload.password=
+upload.keyAlias=upload
+upload.dname=CN=Your Name, O=Iroha, C=JP
+upload.validityDays=10000
