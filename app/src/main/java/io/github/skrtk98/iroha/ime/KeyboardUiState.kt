@@ -38,9 +38,12 @@ data class KeyboardUiState(
     val candidateListExpanded: Boolean = false,
     val enterKind: EnterKind = EnterKind.Newline,
     val spaceKind: SpaceKind = SpaceKind.Space,
-    val keyHeightDp: Int = 52,
     /** キーボード全体の高さの倍率（百分率）。 */
     val keyboardHeightPercent: Int = 100,
+    /** キーボードの下に空ける余白（dp）。 */
+    val keyboardBottomDp: Int = 0,
+    /** 高さと位置の調整中か。調整中はキーを押せない。 */
+    val resizing: Boolean = false,
     val keyBorders: Boolean = true,
     val qwertyNumberRow: Boolean = false,
     val vibrate: Boolean = true,

@@ -61,6 +61,14 @@ class KeyboardController(
         scope.launch { clipboard.entries.collect { clips -> _state.update { it.copy(clips = clips) } } }
         // 設定画面の試し入力欄で、見た目の変更をすぐ確かめられるようにする
         scope.launch { settings.changes.collect { _state.update { it.withAppearance() } } }
+        scope.launch {
+            ResizeRequest.pending.collect { requested ->
+                if (!requested) return@collect
+                ResizeRequest.pending.value = false
+                commitAll()
+                _state.update { it.copy(resizing = true, panel = Panel.None, candidateListExpanded = false) }
+            }
+        }
     }
 
     fun onEngineLoaded(engine: Engine) {
@@ -99,8 +107,8 @@ class KeyboardController(
     }
 
     private fun KeyboardUiState.withAppearance() = copy(
-        keyHeightDp = settings.keyHeightDp,
         keyboardHeightPercent = settings.keyboardHeightPercent,
+        keyboardBottomDp = settings.keyboardBottomDp,
         keyBorders = settings.keyBorders,
         qwertyNumberRow = settings.qwertyNumberRow,
         vibrate = settings.vibrate,
@@ -110,6 +118,11 @@ class KeyboardController(
         resetComposition()
         voice.cancel()
         _state.update { if (it.panel == Panel.Voice) it.copy(panel = Panel.None, voice = VoiceUiState()) else it }
+    }
+
+    /** キーボードが隠れたら、高さと位置の調整は保存せずに終える。欄の移動だけなら続ける。 */
+    fun onFinishInputView() {
+        _state.update { it.copy(resizing = false) }
     }
 
     /** エディタ側でカーソルが未確定文字列の外へ動いたら、入力を打ち切る。 */
@@ -170,6 +183,11 @@ class KeyboardController(
             KeyAction.StartVoice -> startVoice()
             KeyAction.StopVoice -> voice.stop()
             KeyAction.RequestMicPermission -> host.requestMicPermission()
+            is KeyAction.FinishResize -> {
+                settings.keyboardHeightPercent = action.heightPercent
+                settings.keyboardBottomDp = action.bottomDp
+                _state.update { it.copy(resizing = false).withAppearance() }
+            }
             KeyAction.OpenSettings -> host.openSettings()
             KeyAction.SwitchInputMethod -> host.switchInputMethod()
             KeyAction.HideKeyboard -> host.hideKeyboard()

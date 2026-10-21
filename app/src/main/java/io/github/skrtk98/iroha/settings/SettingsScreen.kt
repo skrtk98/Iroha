@@ -19,11 +19,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,19 +31,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.skrtk98.iroha.data.KeyboardLayout
 import io.github.skrtk98.iroha.data.Settings
+import io.github.skrtk98.iroha.ime.ResizeRequest
 import io.github.skrtk98.iroha.ui.theme.IrohaTheme
-import kotlin.math.roundToInt
 
 /** 設定画面に表示する値。 */
 data class SettingsUiState(
     val layout: KeyboardLayout,
     val symbolLayout: KeyboardLayout = layout,
-    val keyHeightDp: Int,
     val keyboardHeightPercent: Int = 100,
+    val keyboardBottomDp: Int = 0,
     val keyBorders: Boolean = true,
     val qwertyNumberRow: Boolean = false,
     val vibrate: Boolean,
@@ -67,8 +70,8 @@ fun SettingsRoute(
     fun read() = SettingsUiState(
         layout = settings.defaultLayout,
         symbolLayout = settings.symbolLayout,
-        keyHeightDp = settings.keyHeightDp,
         keyboardHeightPercent = settings.keyboardHeightPercent,
+        keyboardBottomDp = settings.keyboardBottomDp,
         keyBorders = settings.keyBorders,
         qwertyNumberRow = settings.qwertyNumberRow,
         vibrate = settings.vibrate,
@@ -77,6 +80,8 @@ fun SettingsRoute(
         clipboardHistory = settings.clipboardHistory,
     )
     var state by remember { mutableStateOf(read()) }
+    // キーボード側で高さを調整したときなど、この画面の外で変わった値も表示に映す
+    LaunchedEffect(settings) { settings.changes.collect { state = read() } }
     fun update(block: Settings.() -> Unit) {
         settings.block()
         state = read()
@@ -87,8 +92,7 @@ fun SettingsRoute(
         onShowInputMethodPicker = onShowInputMethodPicker,
         onLayoutChange = { update { defaultLayout = it } },
         onSymbolLayoutChange = { update { symbolLayout = it } },
-        onKeyHeightChange = { update { keyHeightDp = it } },
-        onKeyboardHeightChange = { update { keyboardHeightPercent = it } },
+        onStartResize = { ResizeRequest.pending.value = true },
         onKeyBordersChange = { update { keyBorders = it } },
         onQwertyNumberRowChange = { update { qwertyNumberRow = it } },
         onVibrateChange = { update { vibrate = it } },
@@ -111,8 +115,7 @@ fun SettingsScreen(
     onShowInputMethodPicker: () -> Unit,
     onLayoutChange: (KeyboardLayout) -> Unit,
     onSymbolLayoutChange: (KeyboardLayout) -> Unit,
-    onKeyHeightChange: (Int) -> Unit,
-    onKeyboardHeightChange: (Int) -> Unit,
+    onStartResize: () -> Unit,
     onKeyBordersChange: (Boolean) -> Unit,
     onQwertyNumberRowChange: (Boolean) -> Unit,
     onVibrateChange: (Boolean) -> Unit,
@@ -141,11 +144,13 @@ fun SettingsScreen(
             Text("2. 使用する入力方法として Iroha を選びます。", style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(onClick = onShowInputMethodPicker) { Text("入力方法を選ぶ") }
             var trial by rememberSaveable { mutableStateOf("") }
+            val trialFocus = remember { FocusRequester() }
+            val keyboard = LocalSoftwareKeyboardController.current
             OutlinedTextField(
                 value = trial,
                 onValueChange = { trial = it },
                 label = { Text("ここで試し入力") },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(trialFocus),
             )
 
             HorizontalDivider()
@@ -156,19 +161,18 @@ fun SettingsScreen(
                 "キーボードの「☆123」「?123」キーで、日本語・英字と数字・記号を切り替えます。",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Text("キーの高さ: ${state.keyHeightDp}dp")
-            Slider(
-                value = state.keyHeightDp.toFloat(),
-                onValueChange = { onKeyHeightChange(it.roundToInt()) },
-                valueRange = 40f..72f,
-                steps = 15,
-            )
-            Text("キーボード全体の高さ: ${state.keyboardHeightPercent}%")
-            Slider(
-                value = state.keyboardHeightPercent.toFloat(),
-                onValueChange = { onKeyboardHeightChange((it / 5).roundToInt() * 5) },
-                valueRange = 70f..130f,
-                steps = 11,
+            Text("キーボードの高さ: ${state.keyboardHeightPercent}%　下の余白: ${state.keyboardBottomDp}dp")
+            OutlinedButton(
+                onClick = {
+                    // 試し入力欄でキーボードを開き、その上で枠をドラッグして調整する
+                    trialFocus.requestFocus()
+                    keyboard?.show()
+                    onStartResize()
+                },
+            ) { Text("高さと位置を調整") }
+            Text(
+                "キーボードに枠が出ます。上端で高さ、下端と中央のつまみで位置を変え、「完了」で保存します。",
+                style = MaterialTheme.typography.bodySmall,
             )
             SwitchRow("キーの枠を表示する", state.keyBorders, onKeyBordersChange)
             SwitchRow("QWERTY の日本語・英字で数字の段を表示する", state.qwertyNumberRow, onQwertyNumberRowChange)
@@ -262,13 +266,12 @@ fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Uni
 private fun SettingsScreenPreview() {
     IrohaTheme {
         SettingsScreen(
-            state = SettingsUiState(KeyboardLayout.Flick, keyHeightDp = 52, vibrate = true, fullWidthSpace = false, learningEnabled = true),
+            state = SettingsUiState(KeyboardLayout.Flick, vibrate = true, fullWidthSpace = false, learningEnabled = true),
             onOpenInputMethodSettings = {},
             onShowInputMethodPicker = {},
             onLayoutChange = {},
             onSymbolLayoutChange = {},
-            onKeyHeightChange = {},
-            onKeyboardHeightChange = {},
+            onStartResize = {},
             onKeyBordersChange = {},
             onQwertyNumberRowChange = {},
             onVibrateChange = {},
