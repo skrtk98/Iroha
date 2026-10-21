@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,10 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.skrtk98.iroha.R
-import io.github.skrtk98.iroha.data.KeyboardLayout
 import io.github.skrtk98.iroha.ime.EnterKind
 import io.github.skrtk98.iroha.ime.KeyAction
 import io.github.skrtk98.iroha.ime.KeyboardFace
@@ -69,7 +67,8 @@ fun EnterKey(kind: EnterKind, composing: Boolean, onAction: (KeyAction) -> Unit,
 }
 
 /**
- * 12 キーのフリック配列。左右の列が機能キー、中央 3 列が文字キー。
+ * 12 キーのフリック配列。左右の列が機能キー、中央 3 列が文字キー。高さは [modifier] で決める。
+ * 配列やテンキーの切り替えはどの面でも使うのでツールバーに置き、ここには面ごとのキーだけを置く。
  */
 @Composable
 fun FlickKeyboard(
@@ -78,7 +77,6 @@ fun FlickKeyboard(
     composing: Boolean,
     enterKind: EnterKind,
     spaceKind: SpaceKind,
-    keyHeightDp: Int,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -89,25 +87,19 @@ fun FlickKeyboard(
     }
     var guide by remember { mutableStateOf<FlickGuide?>(null) }
     val root = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    val rowHeight = keyHeightDp.dp
     val onInput: (String) -> Unit = { onAction(KeyAction.Text(it)) }
     Box(modifier.onGloballyPositioned { root[0] = it }) {
-        Row(Modifier.fillMaxWidth().height(rowHeight * 4)) {
+        Row(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 IconKey(R.drawable.ic_keyboard_arrow_left, "左へ", { onAction(KeyAction.CursorLeft) }, Modifier.weight(1f).fillMaxWidth(), repeat = true)
                 IconKey(R.drawable.ic_keyboard_arrow_right, "右へ", { onAction(KeyAction.CursorRight) }, Modifier.weight(1f).fillMaxWidth(), repeat = true)
-                IconKey(
-                    R.drawable.ic_keyboard,
-                    "QWERTY に切り替え",
-                    { onAction(KeyAction.SwitchLayout(KeyboardLayout.Qwerty)) },
-                    Modifier.weight(1f).fillMaxWidth(),
-                )
                 val modeLabel = when (face) {
                     KeyboardFace.FlickAlphabet -> "abc"
                     KeyboardFace.FlickNumber -> "123"
                     else -> "あいう"
                 }
-                TextKey(modeLabel, { onAction(KeyAction.CycleMode) }, Modifier.weight(1f).fillMaxWidth(), KeyStyle.Function, 14.sp)
+                // 右列の確定キーと対になるよう 2 段分の高さにする
+                TextKey(modeLabel, { onAction(KeyAction.CycleMode) }, Modifier.weight(2f).fillMaxWidth(), KeyStyle.Function, 14.sp)
             }
             Column(Modifier.weight(3f).fillMaxHeight()) {
                 for (row in 0 until 4) {
@@ -163,11 +155,9 @@ fun QwertyKeyboard(
     composing: Boolean,
     enterKind: EnterKind,
     spaceKind: SpaceKind,
-    keyHeightDp: Int,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val rowModifier = Modifier.fillMaxWidth().height(keyHeightDp.dp)
     val symbols = face == KeyboardFace.QwertySymbols
     val rows: List<List<String>> = if (symbols) {
         KeyLayouts.symbolRows
@@ -175,11 +165,12 @@ fun QwertyKeyboard(
         KeyLayouts.qwertyRows.map { row -> row.map { if (shifted) it.uppercaseChar().toString() else it.toString() } }
     }
     Column(modifier) {
+        val rowModifier = Modifier.fillMaxWidth().weight(1f)
         Row(rowModifier) { CharacterKeys(rows[0], onAction) }
         Row(rowModifier) {
             Spacer(Modifier.weight(0.5f))
             CharacterKeys(rows[1], onAction)
-            Spacer(Modifier.weight(if (symbols) 0.5f else 0.5f))
+            Spacer(Modifier.weight(0.5f))
         }
         Row(rowModifier) {
             if (symbols) {
@@ -211,13 +202,7 @@ fun QwertyKeyboard(
                 KeyStyle.Function,
                 16.sp,
             )
-            IconKey(
-                R.drawable.ic_dialpad,
-                "フリックに切り替え",
-                { onAction(KeyAction.SwitchLayout(KeyboardLayout.Flick)) },
-                Modifier.weight(1f).fillMaxHeight(),
-            )
-            SpaceKey(spaceKind, onAction, Modifier.weight(3.5f).fillMaxHeight())
+            SpaceKey(spaceKind, onAction, Modifier.weight(4.5f).fillMaxHeight())
             val punctuation = if (face == KeyboardFace.QwertyKana) listOf("ー", "、", "。") else listOf("-", ",", ".")
             for (p in punctuation) {
                 TextKey(p, { onAction(KeyAction.Text(p)) }, Modifier.weight(0.9f).fillMaxHeight())
@@ -234,30 +219,38 @@ private fun RowScope.CharacterKeys(keys: List<String>, onAction: (KeyAction) -> 
     }
 }
 
-/** 数値入力欄向けのテンキー。 */
+/**
+ * 数値入力欄向けのテンキー。フリック配列と同じく左右の列を機能キーにし、数字を中央 3 列に置く。
+ * フリック配列に戻すときはツールバーのテンキーボタンを使う。
+ */
 @Composable
 fun NumberPad(
     enterKind: EnterKind,
-    keyHeightDp: Int,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val rows = listOf(
-        listOf("1", "2", "3", "-"),
-        listOf("4", "5", "6", "+"),
-        listOf("7", "8", "9", ","),
-        listOf("*", "0", ".", "/"),
+    val digits = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf(",", "0", "."),
     )
-    Row(modifier.fillMaxWidth().height(keyHeightDp.dp * 4)) {
-        Column(Modifier.weight(4f).fillMaxHeight()) {
-            for (row in rows) {
+    val operators = listOf("+", "-", "*", "/")
+    Row(modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            for (key in operators) {
+                TextKey(key, { onAction(KeyAction.Text(key)) }, Modifier.weight(1f).fillMaxWidth(), KeyStyle.Function, 22.sp)
+            }
+        }
+        Column(Modifier.weight(3f).fillMaxHeight()) {
+            for (row in digits) {
                 Row(Modifier.weight(1f).fillMaxWidth()) {
-                    for ((i, key) in row.withIndex()) {
+                    for (key in row) {
                         TextKey(
                             key,
                             { onAction(KeyAction.Text(key)) },
                             Modifier.weight(1f).fillMaxHeight(),
-                            style = if (i == 3 || key == "*" || key == ".") KeyStyle.Function else KeyStyle.Character,
+                            style = if (key.first().isDigit()) KeyStyle.Character else KeyStyle.Function,
                             fontSize = 24.sp,
                         )
                     }
@@ -267,8 +260,7 @@ fun NumberPad(
         Column(Modifier.weight(1f).fillMaxHeight()) {
             BackspaceKey(onAction, Modifier.weight(1f).fillMaxWidth())
             IconKey(R.drawable.ic_space_bar, "空白", { onAction(KeyAction.Space) }, Modifier.weight(1f).fillMaxWidth())
-            TextKey("あA", { onAction(KeyAction.ToggleNumberPad) }, Modifier.weight(1f).fillMaxWidth(), KeyStyle.Function, 15.sp)
-            EnterKey(enterKind, composing = false, onAction = onAction, modifier = Modifier.weight(1f).fillMaxWidth())
+            EnterKey(enterKind, composing = false, onAction = onAction, modifier = Modifier.weight(2f).fillMaxWidth())
         }
     }
 }

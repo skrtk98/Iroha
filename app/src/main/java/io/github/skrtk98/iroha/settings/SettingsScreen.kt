@@ -42,6 +42,8 @@ import kotlin.math.roundToInt
 data class SettingsUiState(
     val layout: KeyboardLayout,
     val keyHeightDp: Int,
+    val keyboardHeightPercent: Int = 100,
+    val keyBorders: Boolean = true,
     val vibrate: Boolean,
     val fullWidthSpace: Boolean,
     val learningEnabled: Boolean,
@@ -63,6 +65,8 @@ fun SettingsRoute(
     fun read() = SettingsUiState(
         layout = settings.defaultLayout,
         keyHeightDp = settings.keyHeightDp,
+        keyboardHeightPercent = settings.keyboardHeightPercent,
+        keyBorders = settings.keyBorders,
         vibrate = settings.vibrate,
         fullWidthSpace = settings.fullWidthSpace,
         learningEnabled = settings.learningEnabled,
@@ -79,6 +83,8 @@ fun SettingsRoute(
         onShowInputMethodPicker = onShowInputMethodPicker,
         onLayoutChange = { update { defaultLayout = it } },
         onKeyHeightChange = { update { keyHeightDp = it } },
+        onKeyboardHeightChange = { update { keyboardHeightPercent = it } },
+        onKeyBordersChange = { update { keyBorders = it } },
         onVibrateChange = { update { vibrate = it } },
         onFullWidthSpaceChange = { update { fullWidthSpace = it } },
         onLearningChange = { update { learningEnabled = it } },
@@ -99,6 +105,8 @@ fun SettingsScreen(
     onShowInputMethodPicker: () -> Unit,
     onLayoutChange: (KeyboardLayout) -> Unit,
     onKeyHeightChange: (Int) -> Unit,
+    onKeyboardHeightChange: (Int) -> Unit,
+    onKeyBordersChange: (Boolean) -> Unit,
     onVibrateChange: (Boolean) -> Unit,
     onFullWidthSpaceChange: (Boolean) -> Unit,
     onLearningChange: (Boolean) -> Unit,
@@ -155,6 +163,14 @@ fun SettingsScreen(
                 valueRange = 40f..72f,
                 steps = 15,
             )
+            Text("キーボード全体の高さ: ${state.keyboardHeightPercent}%")
+            Slider(
+                value = state.keyboardHeightPercent.toFloat(),
+                onValueChange = { onKeyboardHeightChange((it / 5).roundToInt() * 5) },
+                valueRange = 70f..130f,
+                steps = 11,
+            )
+            SwitchRow("キーの枠を表示する", state.keyBorders, onKeyBordersChange)
             SwitchRow("キーを押したときに振動", state.vibrate, onVibrateChange)
             SwitchRow("かな入力の空白を全角にする", state.fullWidthSpace, onFullWidthSpaceChange)
 
@@ -232,6 +248,8 @@ private fun SettingsScreenPreview() {
             onShowInputMethodPicker = {},
             onLayoutChange = {},
             onKeyHeightChange = {},
+            onKeyboardHeightChange = {},
+            onKeyBordersChange = {},
             onVibrateChange = {},
             onFullWidthSpaceChange = {},
             onLearningChange = {},

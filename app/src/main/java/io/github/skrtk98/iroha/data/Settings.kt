@@ -20,6 +20,16 @@ class Settings(context: Context) {
         get() = prefs.getInt(KEY_HEIGHT, 52)
         set(value) = prefs.edit().putInt(KEY_HEIGHT, value).apply()
 
+    /** キーボード全体（ツールバーとキー）の高さの倍率。百分率で持つ。 */
+    var keyboardHeightPercent: Int
+        get() = prefs.getInt(KEY_KEYBOARD_HEIGHT, 100)
+        set(value) = prefs.edit().putInt(KEY_KEYBOARD_HEIGHT, value).apply()
+
+    /** キーの背景（枠）を描くか。false ならキーの文字だけを並べる。 */
+    var keyBorders: Boolean
+        get() = prefs.getBoolean(KEY_BORDERS, true)
+        set(value) = prefs.edit().putBoolean(KEY_BORDERS, value).apply()
+
     var vibrate: Boolean
         get() = prefs.getBoolean(KEY_VIBRATE, true)
         set(value) = prefs.edit().putBoolean(KEY_VIBRATE, value).apply()
@@ -46,6 +56,8 @@ class Settings(context: Context) {
     private companion object {
         const val KEY_LAYOUT = "layout"
         const val KEY_HEIGHT = "key_height"
+        const val KEY_KEYBOARD_HEIGHT = "keyboard_height"
+        const val KEY_BORDERS = "key_borders"
         const val KEY_VIBRATE = "vibrate"
         const val KEY_LEARNING = "learning"
         const val KEY_FULL_WIDTH_SPACE = "full_width_space"

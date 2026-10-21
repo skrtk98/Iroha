@@ -47,6 +47,9 @@ import kotlin.math.abs
 /** キー押下時に振動させるかどうか。 */
 val LocalKeyHaptics = staticCompositionLocalOf { true }
 
+/** キーの背景（枠）を描くかどうか。false でも確定キーなどの強調キーと押下中の表示は残す。 */
+val LocalKeyBorders = staticCompositionLocalOf { true }
+
 enum class KeyStyle { Character, Function, Accent }
 
 @Composable
@@ -54,6 +57,7 @@ private fun KeyStyle.container(pressed: Boolean): Color {
     val colors = MaterialTheme.colorScheme
     return when {
         pressed -> colors.primaryContainer
+        this != KeyStyle.Accent && !LocalKeyBorders.current -> Color.Transparent
         this == KeyStyle.Character -> colors.surfaceContainerHighest
         this == KeyStyle.Function -> colors.surfaceContainerHigh
         else -> colors.primary

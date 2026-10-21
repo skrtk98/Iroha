@@ -40,6 +40,9 @@ data class KeyboardUiState(
     val enterKind: EnterKind = EnterKind.Newline,
     val spaceKind: SpaceKind = SpaceKind.Space,
     val keyHeightDp: Int = 52,
+    /** キーボード全体の高さの倍率（百分率）。 */
+    val keyboardHeightPercent: Int = 100,
+    val keyBorders: Boolean = true,
     val vibrate: Boolean = true,
     val loading: Boolean = false,
     val panel: Panel = Panel.None,
