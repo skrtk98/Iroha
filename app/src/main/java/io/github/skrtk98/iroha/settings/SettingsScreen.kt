@@ -45,6 +45,7 @@ data class SettingsUiState(
     val keyHeightDp: Int,
     val keyboardHeightPercent: Int = 100,
     val keyBorders: Boolean = true,
+    val qwertyNumberRow: Boolean = false,
     val vibrate: Boolean,
     val fullWidthSpace: Boolean,
     val learningEnabled: Boolean,
@@ -69,6 +70,7 @@ fun SettingsRoute(
         keyHeightDp = settings.keyHeightDp,
         keyboardHeightPercent = settings.keyboardHeightPercent,
         keyBorders = settings.keyBorders,
+        qwertyNumberRow = settings.qwertyNumberRow,
         vibrate = settings.vibrate,
         fullWidthSpace = settings.fullWidthSpace,
         learningEnabled = settings.learningEnabled,
@@ -88,6 +90,7 @@ fun SettingsRoute(
         onKeyHeightChange = { update { keyHeightDp = it } },
         onKeyboardHeightChange = { update { keyboardHeightPercent = it } },
         onKeyBordersChange = { update { keyBorders = it } },
+        onQwertyNumberRowChange = { update { qwertyNumberRow = it } },
         onVibrateChange = { update { vibrate = it } },
         onFullWidthSpaceChange = { update { fullWidthSpace = it } },
         onLearningChange = { update { learningEnabled = it } },
@@ -111,6 +114,7 @@ fun SettingsScreen(
     onKeyHeightChange: (Int) -> Unit,
     onKeyboardHeightChange: (Int) -> Unit,
     onKeyBordersChange: (Boolean) -> Unit,
+    onQwertyNumberRowChange: (Boolean) -> Unit,
     onVibrateChange: (Boolean) -> Unit,
     onFullWidthSpaceChange: (Boolean) -> Unit,
     onLearningChange: (Boolean) -> Unit,
@@ -167,6 +171,7 @@ fun SettingsScreen(
                 steps = 11,
             )
             SwitchRow("キーの枠を表示する", state.keyBorders, onKeyBordersChange)
+            SwitchRow("QWERTY の日本語・英字で数字の段を表示する", state.qwertyNumberRow, onQwertyNumberRowChange)
             SwitchRow("キーを押したときに振動", state.vibrate, onVibrateChange)
             SwitchRow("かな入力の空白を全角にする", state.fullWidthSpace, onFullWidthSpaceChange)
 
@@ -265,6 +270,7 @@ private fun SettingsScreenPreview() {
             onKeyHeightChange = {},
             onKeyboardHeightChange = {},
             onKeyBordersChange = {},
+            onQwertyNumberRowChange = {},
             onVibrateChange = {},
             onFullWidthSpaceChange = {},
             onLearningChange = {},

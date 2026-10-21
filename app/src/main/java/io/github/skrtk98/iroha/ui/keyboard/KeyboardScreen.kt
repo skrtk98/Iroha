@@ -83,7 +83,10 @@ fun KeyboardScreen(
             } else {
                 Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
             }
-            val keyboardHeight = state.keyHeightDp.dp * 4 * scale
+            val numberRow = state.qwertyNumberRow &&
+                (state.face == KeyboardFace.QwertyKana || state.face == KeyboardFace.QwertyAlphabet)
+            val rows = if (numberRow) 4 + QwertyNumberRowWeight else 4f
+            val keyboardHeight = state.keyHeightDp.dp * rows * scale
             if (state.candidateListExpanded && state.composing) {
                 CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             } else if (state.panel == Panel.Voice) {
@@ -145,6 +148,7 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             composing = state.composing,
             enterKind = state.enterKind,
             spaceKind = state.spaceKind,
+            numberRow = state.qwertyNumberRow,
             onAction = onAction,
             modifier = modifier,
         )

@@ -102,6 +102,7 @@ class KeyboardController(
         keyHeightDp = settings.keyHeightDp,
         keyboardHeightPercent = settings.keyboardHeightPercent,
         keyBorders = settings.keyBorders,
+        qwertyNumberRow = settings.qwertyNumberRow,
         vibrate = settings.vibrate,
     )
 

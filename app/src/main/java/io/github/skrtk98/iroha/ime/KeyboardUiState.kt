@@ -42,6 +42,7 @@ data class KeyboardUiState(
     /** キーボード全体の高さの倍率（百分率）。 */
     val keyboardHeightPercent: Int = 100,
     val keyBorders: Boolean = true,
+    val qwertyNumberRow: Boolean = false,
     val vibrate: Boolean = true,
     val loading: Boolean = false,
     val panel: Panel = Panel.None,
