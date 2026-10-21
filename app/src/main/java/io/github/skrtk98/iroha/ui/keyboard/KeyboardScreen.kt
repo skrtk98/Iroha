@@ -57,6 +57,7 @@ import io.github.skrtk98.iroha.ime.Panel
 import io.github.skrtk98.iroha.ui.theme.IrohaTheme
 
 private val BarHeight = 44.dp
+private val MinBarHeight = 36.dp
 
 /**
  * キーボード全体。状態とコールバックだけを受け取るので、プレビューやテストで単体表示できる。
@@ -67,7 +68,10 @@ fun KeyboardScreen(
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    CompositionLocalProvider(LocalKeyHaptics provides state.vibrate) {
+    // 全体の高さ設定は、ツールバーとキーの両方に同じ倍率で掛ける
+    val scale = state.keyboardHeightPercent / 100f
+    val barHeight = (BarHeight * scale).coerceAtLeast(MinBarHeight)
+    CompositionLocalProvider(LocalKeyHaptics provides state.vibrate, LocalKeyBorders provides state.keyBorders) {
         Column(
             modifier
                 .fillMaxWidth()
@@ -76,11 +80,11 @@ fun KeyboardScreen(
                 .padding(horizontal = 3.dp, vertical = 2.dp),
         ) {
             if (state.composing) {
-                CandidateBar(state, onAction, Modifier.fillMaxWidth().height(BarHeight))
+                CandidateBar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
             } else {
-                Toolbar(state, onAction, Modifier.fillMaxWidth().height(BarHeight))
+                Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
             }
-            val keyboardHeight = state.keyHeightDp.dp * 4
+            val keyboardHeight = state.keyHeightDp.dp * 4 * scale
             if (state.candidateListExpanded && state.composing) {
                 CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             } else if (state.panel == Panel.Voice) {
@@ -131,7 +135,6 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             composing = state.composing,
             enterKind = state.enterKind,
             spaceKind = state.spaceKind,
-            keyHeightDp = state.keyHeightDp,
             onAction = onAction,
             modifier = modifier,
         )
@@ -141,11 +144,10 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             composing = state.composing,
             enterKind = state.enterKind,
             spaceKind = state.spaceKind,
-            keyHeightDp = state.keyHeightDp,
             onAction = onAction,
             modifier = modifier,
         )
-        KeyboardFace.NumberPad -> NumberPad(state.enterKind, state.keyHeightDp, onAction, modifier)
+        KeyboardFace.NumberPad -> NumberPad(state.enterKind, onAction, modifier)
     }
 }
 
@@ -153,16 +155,18 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
 private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         ToolbarButton(R.drawable.ic_settings, "設定") { onAction(KeyAction.OpenSettings) }
-        ToolbarButton(R.drawable.ic_content_paste, "クリップボード") {
+        ToolbarButton(R.drawable.ic_content_paste, "クリップボード", active = state.panel == Panel.Clipboard) {
             onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
         }
-        ToolbarButton(R.drawable.ic_open_with, "カーソル移動") {
+        ToolbarButton(R.drawable.ic_open_with, "カーソル移動", active = state.panel == Panel.Cursor) {
             onAction(if (state.panel == Panel.Cursor) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Cursor))
         }
-        ToolbarButton(R.drawable.ic_mic, "音声入力") {
+        ToolbarButton(R.drawable.ic_mic, "音声入力", active = state.panel == Panel.Voice) {
             onAction(if (state.panel == Panel.Voice) KeyAction.ClosePanel else KeyAction.StartVoice)
         }
-        ToolbarButton(R.drawable.ic_dialpad, "テンキー") { onAction(KeyAction.ToggleNumberPad) }
+        ToolbarButton(R.drawable.ic_dialpad, "テンキー", active = state.face == KeyboardFace.NumberPad) {
+            onAction(KeyAction.ToggleNumberPad)
+        }
         val other = if (state.layout == KeyboardLayout.Flick) KeyboardLayout.Qwerty else KeyboardLayout.Flick
         ToolbarButton(R.drawable.ic_keyboard, "配列を切り替え") { onAction(KeyAction.SwitchLayout(other)) }
         Spacer(Modifier.weight(1f))
@@ -176,9 +180,15 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
 }
 
 @Composable
-fun ToolbarButton(@DrawableRes icon: Int, description: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(BarHeight)) {
-        Icon(painterResource(icon), contentDescription = description, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+fun ToolbarButton(@DrawableRes icon: Int, description: String, active: Boolean = false, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    // 高さはバーに合わせ、幅は従来の大きさを保つ
+    IconButton(onClick = onClick, modifier = Modifier.fillMaxHeight().widthIn(min = BarHeight)) {
+        Icon(
+            painterResource(icon),
+            contentDescription = description,
+            tint = if (active) colors.primary else colors.onSurfaceVariant,
+        )
     }
 }
 

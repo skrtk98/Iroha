@@ -60,6 +60,8 @@ class KeyboardController(
     init {
         scope.launch { collectSuggestions() }
         scope.launch { clipboard.entries.collect { clips -> _state.update { it.copy(clips = clips) } } }
+        // 設定画面の試し入力欄で、見た目の変更をすぐ確かめられるようにする
+        scope.launch { settings.changes.collect { _state.update { it.withAppearance() } } }
     }
 
     fun onEngineLoaded(engine: Engine) {
@@ -91,15 +93,20 @@ class KeyboardController(
                 face = face,
                 shifted = false,
                 enterKind = enterKindOf(info),
-                keyHeightDp = settings.keyHeightDp,
-                vibrate = settings.vibrate,
                 candidateListExpanded = false,
                 panel = if (restarting) it.panel else Panel.None,
                 selecting = restarting && it.selecting,
-            )
+            ).withAppearance()
         }
         render()
     }
+
+    private fun KeyboardUiState.withAppearance() = copy(
+        keyHeightDp = settings.keyHeightDp,
+        keyboardHeightPercent = settings.keyboardHeightPercent,
+        keyBorders = settings.keyBorders,
+        vibrate = settings.vibrate,
+    )
 
     fun onFinishInput() {
         resetComposition()
