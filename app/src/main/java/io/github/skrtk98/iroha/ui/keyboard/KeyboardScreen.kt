@@ -167,8 +167,7 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
         ToolbarButton(R.drawable.ic_dialpad, "テンキー", active = state.face == KeyboardFace.NumberPad) {
             onAction(KeyAction.ToggleNumberPad)
         }
-        val other = if (state.layout == KeyboardLayout.Flick) KeyboardLayout.Qwerty else KeyboardLayout.Flick
-        ToolbarButton(R.drawable.ic_keyboard, "配列を切り替え") { onAction(KeyAction.SwitchLayout(other)) }
+        LayoutSwitchButton(state.layout, onAction)
         Spacer(Modifier.weight(1f))
         if (state.loading) {
             Text("辞書を読み込み中…", style = MaterialTheme.typography.labelMedium)
@@ -177,6 +176,12 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
         ToolbarButton(R.drawable.ic_language, "入力方法を切り替え") { onAction(KeyAction.SwitchInputMethod) }
         ToolbarButton(R.drawable.ic_keyboard_hide, "キーボードを閉じる") { onAction(KeyAction.HideKeyboard) }
     }
+}
+
+@Composable
+private fun LayoutSwitchButton(layout: KeyboardLayout, onAction: (KeyAction) -> Unit) {
+    val other = if (layout == KeyboardLayout.Flick) KeyboardLayout.Qwerty else KeyboardLayout.Flick
+    ToolbarButton(R.drawable.ic_keyboard, "配列を切り替え") { onAction(KeyAction.SwitchLayout(other)) }
 }
 
 @Composable
@@ -218,6 +223,9 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
         }
         if (state.converting) {
             ToolbarButton(R.drawable.ic_last_page, "文節を伸ばす") { onAction(KeyAction.ResizeSegment(1)) }
+        } else {
+            // 入力中はツールバーが隠れるので、配列の切り替えだけはここに残す
+            LayoutSwitchButton(state.layout, onAction)
         }
         ToolbarButton(
             if (state.candidateListExpanded) R.drawable.ic_keyboard_arrow_up else R.drawable.ic_keyboard_arrow_down,
