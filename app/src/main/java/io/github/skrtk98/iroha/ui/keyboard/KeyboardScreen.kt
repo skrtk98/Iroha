@@ -49,7 +49,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.unit.sp
 import io.github.skrtk98.iroha.R
-import io.github.skrtk98.iroha.data.KeyboardLayout
 import io.github.skrtk98.iroha.ime.KeyAction
 import io.github.skrtk98.iroha.ime.KeyboardFace
 import io.github.skrtk98.iroha.ime.KeyboardUiState
@@ -131,6 +130,7 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
     when (state.face) {
         KeyboardFace.FlickKana, KeyboardFace.FlickAlphabet, KeyboardFace.FlickNumber -> FlickKeyboard(
             face = state.face,
+            textFace = state.textFace,
             shifted = state.shifted,
             composing = state.composing,
             enterKind = state.enterKind,
@@ -140,6 +140,7 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
         )
         KeyboardFace.QwertyKana, KeyboardFace.QwertyAlphabet, KeyboardFace.QwertySymbols -> QwertyKeyboard(
             face = state.face,
+            textFace = state.textFace,
             shifted = state.shifted,
             composing = state.composing,
             enterKind = state.enterKind,
@@ -147,7 +148,6 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             onAction = onAction,
             modifier = modifier,
         )
-        KeyboardFace.NumberPad -> NumberPad(state.enterKind, onAction, modifier)
     }
 }
 
@@ -164,10 +164,7 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
         ToolbarButton(R.drawable.ic_mic, "音声入力", active = state.panel == Panel.Voice) {
             onAction(if (state.panel == Panel.Voice) KeyAction.ClosePanel else KeyAction.StartVoice)
         }
-        ToolbarButton(R.drawable.ic_dialpad, "テンキー", active = state.face == KeyboardFace.NumberPad) {
-            onAction(KeyAction.ToggleNumberPad)
-        }
-        LayoutSwitchButton(state.layout, onAction)
+        LayoutSwitchButton(onAction)
         Spacer(Modifier.weight(1f))
         if (state.loading) {
             Text("辞書を読み込み中…", style = MaterialTheme.typography.labelMedium)
@@ -179,9 +176,8 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
 }
 
 @Composable
-private fun LayoutSwitchButton(layout: KeyboardLayout, onAction: (KeyAction) -> Unit) {
-    val other = if (layout == KeyboardLayout.Flick) KeyboardLayout.Qwerty else KeyboardLayout.Flick
-    ToolbarButton(R.drawable.ic_keyboard, "配列を切り替え") { onAction(KeyAction.SwitchLayout(other)) }
+private fun LayoutSwitchButton(onAction: (KeyAction) -> Unit) {
+    ToolbarButton(R.drawable.ic_keyboard, "配列を切り替え") { onAction(KeyAction.ToggleLayout) }
 }
 
 @Composable
@@ -225,7 +221,7 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             ToolbarButton(R.drawable.ic_last_page, "文節を伸ばす") { onAction(KeyAction.ResizeSegment(1)) }
         } else {
             // 入力中はツールバーが隠れるので、配列の切り替えだけはここに残す
-            LayoutSwitchButton(state.layout, onAction)
+            LayoutSwitchButton(onAction)
         }
         ToolbarButton(
             if (state.candidateListExpanded) R.drawable.ic_keyboard_arrow_up else R.drawable.ic_keyboard_arrow_down,

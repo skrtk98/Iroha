@@ -5,7 +5,7 @@ import androidx.compose.runtime.Immutable
 /** フリック方向。 */
 enum class FlickDirection { Center, Left, Up, Right, Down }
 
-/** フリックキー 1 個。方向ごとの文字を持ち、無い方向は null。 */
+/** フリックキー 1 個。方向ごとの文字を持ち、無い方向は null。[hint] はラベルの下に小さく出す補足。 */
 @Immutable
 data class FlickKey(
     val label: String,
@@ -14,6 +14,7 @@ data class FlickKey(
     val up: String? = null,
     val right: String? = null,
     val down: String? = null,
+    val hint: String? = null,
 ) {
     fun output(direction: FlickDirection): String? = when (direction) {
         FlickDirection.Center -> center
@@ -48,12 +49,19 @@ object KeyLayouts {
         FlickKey("'\"()", "'", "\"", "(", ")"), FlickKey(".,?!", ".", ",", "?", "!", "-"),
     )
 
+    /** 数字・記号のテンキー。数字をそのまま押すと数字、フリックすると記号になる。 */
     val flickNumber: List<FlickKey> = listOf(
-        FlickKey("1", "1", "☆", "♪", "→"), FlickKey("2", "2", "¥", "$", "€"), FlickKey("3", "3", "%", "°", "#"),
-        FlickKey("4", "4", "○", "*", "・"), FlickKey("5", "5", "+", "×", "÷"), FlickKey("6", "6", "<", "=", ">"),
-        FlickKey("7", "7", "「", "」", ":"), FlickKey("8", "8", "〒", "々", "〆"), FlickKey("9", "9", "^", "|", "\\"),
-        FlickKey("0", "0", "〜", "…", "~"), FlickKey(".,-/", ".", ",", "-", "/"),
+        numberKey("1", "☆", "♪", "→"), numberKey("2", "¥", "$", "€"), numberKey("3", "%", "°", "#"),
+        numberKey("4", "○", "*", "・"), numberKey("5", "+", "×", "÷"), numberKey("6", "<", "=", ">"),
+        numberKey("7", "「", "」", ":"), numberKey("8", "〒", "々", "〆"), numberKey("9", "^", "|", "\\"),
+        numberKey("0", "〜", "…", "~"), FlickKey(".,-/", ".", ",", "-", "/"),
     )
+
+    /** 数字テンキーの左下。括弧をまとめる。 */
+    val flickNumberBrackets = FlickKey("()[]", "(", ")", "[", "]")
+
+    private fun numberKey(digit: String, left: String, up: String, right: String) =
+        FlickKey(digit, digit, left, up, right, hint = left + up + right)
 
     val qwertyRows: List<String> = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
 

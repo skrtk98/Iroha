@@ -12,9 +12,17 @@ enum class KeyboardLayout { Flick, Qwerty }
 class Settings(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
+    /** 日英（かな・英字）の配列。 */
     var defaultLayout: KeyboardLayout
-        get() = KeyboardLayout.entries.firstOrNull { it.name == prefs.getString(KEY_LAYOUT, null) } ?: KeyboardLayout.Flick
+        get() = layoutOf(KEY_LAYOUT) ?: KeyboardLayout.Flick
         set(value) = prefs.edit().putString(KEY_LAYOUT, value.name).apply()
+
+    /** 数字・記号の配列。未設定なら日英と同じにする。 */
+    var symbolLayout: KeyboardLayout
+        get() = layoutOf(KEY_SYMBOL_LAYOUT) ?: defaultLayout
+        set(value) = prefs.edit().putString(KEY_SYMBOL_LAYOUT, value.name).apply()
+
+    private fun layoutOf(key: String) = KeyboardLayout.entries.firstOrNull { it.name == prefs.getString(key, null) }
 
     var keyHeightDp: Int
         get() = prefs.getInt(KEY_HEIGHT, 52)
@@ -55,6 +63,7 @@ class Settings(context: Context) {
 
     private companion object {
         const val KEY_LAYOUT = "layout"
+        const val KEY_SYMBOL_LAYOUT = "symbol_layout"
         const val KEY_HEIGHT = "key_height"
         const val KEY_KEYBOARD_HEIGHT = "keyboard_height"
         const val KEY_BORDERS = "key_borders"
