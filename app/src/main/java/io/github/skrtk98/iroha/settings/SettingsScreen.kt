@@ -171,7 +171,7 @@ fun SettingsScreen(
                 },
             ) { Text("高さと位置を調整") }
             Text(
-                "キーボードに枠が出ます。上端で高さ、下端と中央のつまみで位置を変え、「完了」で保存します。",
+                "キーボード上部が調整用のバーに変わります。バーを上下にドラッグするか ＋− で高さ、↓↑ で位置を変えます。調整中も文字を打って試せます。✓ で保存します。",
                 style = MaterialTheme.typography.bodySmall,
             )
             SwitchRow("キーの枠を表示する", state.keyBorders, onKeyBordersChange)
