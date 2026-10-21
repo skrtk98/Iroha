@@ -38,6 +38,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_BORDERS, true)
         set(value) = prefs.edit().putBoolean(KEY_BORDERS, value).apply()
 
+    /** QWERTY の日本語・英字で、英字の上に数字の段を出すか。 */
+    var qwertyNumberRow: Boolean
+        get() = prefs.getBoolean(KEY_QWERTY_NUMBER_ROW, false)
+        set(value) = prefs.edit().putBoolean(KEY_QWERTY_NUMBER_ROW, value).apply()
+
     var vibrate: Boolean
         get() = prefs.getBoolean(KEY_VIBRATE, true)
         set(value) = prefs.edit().putBoolean(KEY_VIBRATE, value).apply()
@@ -67,6 +72,7 @@ class Settings(context: Context) {
         const val KEY_HEIGHT = "key_height"
         const val KEY_KEYBOARD_HEIGHT = "keyboard_height"
         const val KEY_BORDERS = "key_borders"
+        const val KEY_QWERTY_NUMBER_ROW = "qwerty_number_row"
         const val KEY_VIBRATE = "vibrate"
         const val KEY_LEARNING = "learning"
         const val KEY_FULL_WIDTH_SPACE = "full_width_space"

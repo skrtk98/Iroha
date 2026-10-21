@@ -159,7 +159,10 @@ private fun ModifierKey(face: KeyboardFace, shifted: Boolean, onAction: (KeyActi
     }
 }
 
-/** QWERTY 配列。かな面ではローマ字入力になる。 */
+/** 数字の段の高さ。英字の段 1 段を 1 とした比。 */
+const val QwertyNumberRowWeight = 0.8f
+
+/** QWERTY 配列。かな面ではローマ字入力になる。[numberRow] なら日英の面で英字の上に数字の段を出す。 */
 @Composable
 fun QwertyKeyboard(
     face: KeyboardFace,
@@ -168,6 +171,7 @@ fun QwertyKeyboard(
     composing: Boolean,
     enterKind: EnterKind,
     spaceKind: SpaceKind,
+    numberRow: Boolean,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -179,6 +183,9 @@ fun QwertyKeyboard(
     }
     Column(modifier) {
         val rowModifier = Modifier.fillMaxWidth().weight(1f)
+        if (numberRow && !symbols) {
+            Row(Modifier.fillMaxWidth().weight(QwertyNumberRowWeight)) { CharacterKeys(KeyLayouts.symbolRows[0], onAction) }
+        }
         Row(rowModifier) { CharacterKeys(rows[0], onAction) }
         Row(rowModifier) {
             Spacer(Modifier.weight(0.5f))
