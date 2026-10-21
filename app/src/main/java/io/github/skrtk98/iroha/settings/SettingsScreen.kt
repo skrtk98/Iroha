@@ -41,6 +41,7 @@ import kotlin.math.roundToInt
 /** 設定画面に表示する値。 */
 data class SettingsUiState(
     val layout: KeyboardLayout,
+    val symbolLayout: KeyboardLayout = layout,
     val keyHeightDp: Int,
     val keyboardHeightPercent: Int = 100,
     val keyBorders: Boolean = true,
@@ -64,6 +65,7 @@ fun SettingsRoute(
 ) {
     fun read() = SettingsUiState(
         layout = settings.defaultLayout,
+        symbolLayout = settings.symbolLayout,
         keyHeightDp = settings.keyHeightDp,
         keyboardHeightPercent = settings.keyboardHeightPercent,
         keyBorders = settings.keyBorders,
@@ -82,6 +84,7 @@ fun SettingsRoute(
         onOpenInputMethodSettings = onOpenInputMethodSettings,
         onShowInputMethodPicker = onShowInputMethodPicker,
         onLayoutChange = { update { defaultLayout = it } },
+        onSymbolLayoutChange = { update { symbolLayout = it } },
         onKeyHeightChange = { update { keyHeightDp = it } },
         onKeyboardHeightChange = { update { keyboardHeightPercent = it } },
         onKeyBordersChange = { update { keyBorders = it } },
@@ -104,6 +107,7 @@ fun SettingsScreen(
     onOpenInputMethodSettings: () -> Unit,
     onShowInputMethodPicker: () -> Unit,
     onLayoutChange: (KeyboardLayout) -> Unit,
+    onSymbolLayoutChange: (KeyboardLayout) -> Unit,
     onKeyHeightChange: (Int) -> Unit,
     onKeyboardHeightChange: (Int) -> Unit,
     onKeyBordersChange: (Boolean) -> Unit,
@@ -142,20 +146,12 @@ fun SettingsScreen(
 
             HorizontalDivider()
             SectionTitle("キーボード")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("配列", Modifier.weight(1f))
-                FilterChip(
-                    selected = state.layout == KeyboardLayout.Flick,
-                    onClick = { onLayoutChange(KeyboardLayout.Flick) },
-                    label = { Text("フリック") },
-                )
-                Spacer(Modifier.width(8.dp))
-                FilterChip(
-                    selected = state.layout == KeyboardLayout.Qwerty,
-                    onClick = { onLayoutChange(KeyboardLayout.Qwerty) },
-                    label = { Text("QWERTY") },
-                )
-            }
+            LayoutRow("日本語・英字の配列", state.layout, onLayoutChange)
+            LayoutRow("数字・記号の配列", state.symbolLayout, onSymbolLayoutChange)
+            Text(
+                "キーボードの「☆123」「?123」キーで、日本語・英字と数字・記号を切り替えます。",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Text("キーの高さ: ${state.keyHeightDp}dp")
             Slider(
                 value = state.keyHeightDp.toFloat(),
@@ -225,6 +221,24 @@ fun SectionTitle(text: String) {
 }
 
 @Composable
+private fun LayoutRow(label: String, selected: KeyboardLayout, onChange: (KeyboardLayout) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f))
+        FilterChip(
+            selected = selected == KeyboardLayout.Flick,
+            onClick = { onChange(KeyboardLayout.Flick) },
+            label = { Text("フリック") },
+        )
+        Spacer(Modifier.width(8.dp))
+        FilterChip(
+            selected = selected == KeyboardLayout.Qwerty,
+            onClick = { onChange(KeyboardLayout.Qwerty) },
+            label = { Text("QWERTY") },
+        )
+    }
+}
+
+@Composable
 fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         Modifier
@@ -243,10 +257,11 @@ fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Uni
 private fun SettingsScreenPreview() {
     IrohaTheme {
         SettingsScreen(
-            state = SettingsUiState(KeyboardLayout.Flick, 52, vibrate = true, fullWidthSpace = false, learningEnabled = true),
+            state = SettingsUiState(KeyboardLayout.Flick, keyHeightDp = 52, vibrate = true, fullWidthSpace = false, learningEnabled = true),
             onOpenInputMethodSettings = {},
             onShowInputMethodPicker = {},
             onLayoutChange = {},
+            onSymbolLayoutChange = {},
             onKeyHeightChange = {},
             onKeyboardHeightChange = {},
             onKeyBordersChange = {},
