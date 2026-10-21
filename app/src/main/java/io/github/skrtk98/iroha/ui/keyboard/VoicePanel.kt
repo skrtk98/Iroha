@@ -18,7 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.skrtk98.iroha.R
@@ -35,15 +35,16 @@ fun VoicePanel(
 ) {
     val colors = MaterialTheme.colorScheme
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Column(
-            Modifier.weight(1f).fillMaxWidth().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+        // キーボード全体の高さを低くしても収まるよう、マイクと文を横に並べる
+        Row(
+            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
         ) {
             val listening = voice.status == VoiceStatus.Listening
             Box(
                 Modifier
-                    .size(72.dp)
+                    .size(56.dp)
                     .clip(CircleShape)
                     .background(if (listening) colors.primary else colors.surfaceContainerHighest),
                 contentAlignment = Alignment.Center,
@@ -52,7 +53,7 @@ fun VoicePanel(
                     painterResource(R.drawable.ic_mic),
                     contentDescription = null,
                     tint = if (listening) colors.onPrimary else colors.onSurfaceVariant,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(28.dp),
                 )
             }
             val text = when (voice.status) {
@@ -61,7 +62,13 @@ fun VoicePanel(
                 VoiceStatus.Error -> voice.message
                 VoiceStatus.Idle -> voice.partial.ifEmpty { "マイクを押すと話せます" }
             }
-            Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text,
+                modifier = Modifier.weight(1f, fill = false),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Row(Modifier.fillMaxWidth().height(52.dp)) {
             TextKey("キーボードに戻る", { onAction(KeyAction.ClosePanel) }, Modifier.weight(1f), KeyStyle.Function, 15.sp)
