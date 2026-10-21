@@ -4,18 +4,25 @@ import android.view.View
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ripple
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -24,7 +31,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -155,40 +161,86 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
     }
 }
 
+/**
+ * 上部のボタン列。どの面でも使う機能を均等に並べる。キーボードを閉じる・入力方法の切り替えは
+ * ナビゲーションバーにもシステムのボタンがあるので、ここでは長押しに割り当てて場所を取らない。
+ */
 @Composable
 private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modifier: Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        ToolbarButton(R.drawable.ic_settings, "設定") { onAction(KeyAction.OpenSettings) }
-        ToolbarButton(R.drawable.ic_content_paste, "クリップボード", active = state.panel == Panel.Clipboard) {
-            onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
+    Box(modifier) {
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            val cell = Modifier.weight(1f)
+            ToolbarButton(
+                R.drawable.ic_settings,
+                "設定",
+                cell,
+                onLongClick = { onAction(KeyAction.HideKeyboard) },
+                longClickLabel = "キーボードを閉じる",
+            ) { onAction(KeyAction.OpenSettings) }
+            LayoutSwitchButton(onAction, cell)
+            ToolbarButton(R.drawable.ic_content_paste, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
+                onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
+            }
+            ToolbarButton(R.drawable.ic_open_with, "カーソル移動", cell, active = state.panel == Panel.Cursor) {
+                onAction(if (state.panel == Panel.Cursor) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Cursor))
+            }
+            ToolbarButton(R.drawable.ic_mic, "音声入力", cell, active = state.panel == Panel.Voice) {
+                onAction(if (state.panel == Panel.Voice) KeyAction.ClosePanel else KeyAction.StartVoice)
+            }
         }
-        ToolbarButton(R.drawable.ic_open_with, "カーソル移動", active = state.panel == Panel.Cursor) {
-            onAction(if (state.panel == Panel.Cursor) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Cursor))
-        }
-        ToolbarButton(R.drawable.ic_mic, "音声入力", active = state.panel == Panel.Voice) {
-            onAction(if (state.panel == Panel.Voice) KeyAction.ClosePanel else KeyAction.StartVoice)
-        }
-        LayoutSwitchButton(onAction)
-        Spacer(Modifier.weight(1f))
         if (state.loading) {
-            Text("辞書を読み込み中…", style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.weight(1f))
+            LinearProgressIndicator(
+                Modifier.fillMaxWidth().align(Alignment.BottomCenter).semantics { contentDescription = "辞書を読み込み中" },
+            )
         }
-        ToolbarButton(R.drawable.ic_language, "入力方法を切り替え") { onAction(KeyAction.SwitchInputMethod) }
-        ToolbarButton(R.drawable.ic_keyboard_hide, "キーボードを閉じる") { onAction(KeyAction.HideKeyboard) }
     }
 }
 
+/** 配列の切り替え。長押しで次の入力方法に切り替える。 */
 @Composable
-private fun LayoutSwitchButton(onAction: (KeyAction) -> Unit) {
-    ToolbarButton(R.drawable.ic_keyboard, "配列を切り替え") { onAction(KeyAction.ToggleLayout) }
+private fun LayoutSwitchButton(onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
+    ToolbarButton(
+        R.drawable.ic_keyboard,
+        "配列を切り替え",
+        modifier,
+        onLongClick = { onAction(KeyAction.SwitchInputMethod) },
+        longClickLabel = "入力方法を切り替え",
+    ) { onAction(KeyAction.ToggleLayout) }
 }
 
+/** 上部のアイコンボタン。[onLongClick] があれば長押しにも反応し、振動で知らせる。 */
 @Composable
-fun ToolbarButton(@DrawableRes icon: Int, description: String, active: Boolean = false, onClick: () -> Unit) {
+fun ToolbarButton(
+    @DrawableRes icon: Int,
+    description: String,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
+    onClick: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
-    // 高さはバーに合わせ、幅は従来の大きさを保つ
-    IconButton(onClick = onClick, modifier = Modifier.fillMaxHeight().widthIn(min = BarHeight)) {
+    val haptic = LocalHapticFeedback.current
+    Box(
+        modifier
+            .fillMaxHeight()
+            .widthIn(min = BarHeight)
+            .combinedClickable(
+                interactionSource = null,
+                // 均等割りで横に広がっても、波紋はアイコンの周りだけに出す
+                indication = ripple(bounded = false, radius = BarHeight / 2),
+                role = Role.Button,
+                onLongClickLabel = longClickLabel,
+                onLongClick = onLongClick?.let { action ->
+                    {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        action()
+                    }
+                },
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
         Icon(
             painterResource(icon),
             contentDescription = description,
