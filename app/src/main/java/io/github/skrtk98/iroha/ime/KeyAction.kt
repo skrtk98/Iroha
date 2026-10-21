@@ -53,8 +53,8 @@ sealed interface KeyAction {
     /** マイクの権限を得るため設定画面を開く。 */
     data object RequestMicPermission : KeyAction
 
-    /** 調整した高さ（百分率）と下の余白（dp）を保存して調整を終える。 */
-    data class FinishResize(val heightPercent: Int, val bottomDp: Int) : KeyAction
+    /** 調整した高さ（百分率）を保存して調整を終える。 */
+    data class FinishResize(val heightPercent: Int) : KeyAction
 
     data object OpenSettings : KeyAction
     data object SwitchInputMethod : KeyAction

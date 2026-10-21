@@ -46,7 +46,6 @@ data class SettingsUiState(
     val layout: KeyboardLayout,
     val symbolLayout: KeyboardLayout = layout,
     val keyboardHeightPercent: Int = 100,
-    val keyboardBottomDp: Int = 0,
     val keyBorders: Boolean = true,
     val qwertyNumberRow: Boolean = false,
     val vibrate: Boolean,
@@ -71,7 +70,6 @@ fun SettingsRoute(
         layout = settings.defaultLayout,
         symbolLayout = settings.symbolLayout,
         keyboardHeightPercent = settings.keyboardHeightPercent,
-        keyboardBottomDp = settings.keyboardBottomDp,
         keyBorders = settings.keyBorders,
         qwertyNumberRow = settings.qwertyNumberRow,
         vibrate = settings.vibrate,
@@ -161,7 +159,7 @@ fun SettingsScreen(
                 "キーボードの「☆123」「?123」キーで、日本語・英字と数字・記号を切り替えます。",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Text("キーボードの高さ: ${state.keyboardHeightPercent}%　下の余白: ${state.keyboardBottomDp}dp")
+            Text("キーボードの高さ: ${state.keyboardHeightPercent}%")
             OutlinedButton(
                 onClick = {
                     // 試し入力欄でキーボードを開き、その上で枠をドラッグして調整する
@@ -169,9 +167,9 @@ fun SettingsScreen(
                     keyboard?.show()
                     onStartResize()
                 },
-            ) { Text("高さと位置を調整") }
+            ) { Text("高さを調整") }
             Text(
-                "キーボード上部が調整用のバーに変わります。バーを上下にドラッグするか ＋− で高さ、↓↑ で位置を変えます。調整中も文字を打って試せます。✓ で保存します。",
+                "キーボード上部が調整用のバーに変わります。バーを上下にドラッグするか ＋− で高さを変えます。調整中も文字を打って試せます。✓ で保存します。",
                 style = MaterialTheme.typography.bodySmall,
             )
             SwitchRow("キーの枠を表示する", state.keyBorders, onKeyBordersChange)

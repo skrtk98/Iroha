@@ -29,11 +29,6 @@ class Settings(context: Context) {
         get() = prefs.getInt(KEY_KEYBOARD_HEIGHT, 100).coerceIn(MIN_HEIGHT_PERCENT, MAX_HEIGHT_PERCENT)
         set(value) = prefs.edit().putInt(KEY_KEYBOARD_HEIGHT, value).apply()
 
-    /** キーボードの下に空ける余白。片手で届きやすいよう、キーボードを持ち上げる。 */
-    var keyboardBottomDp: Int
-        get() = prefs.getInt(KEY_KEYBOARD_BOTTOM, 0).coerceIn(0, MAX_BOTTOM_DP)
-        set(value) = prefs.edit().putInt(KEY_KEYBOARD_BOTTOM, value).apply()
-
     /** キーの背景（枠）を描くか。false ならキーの文字だけを並べる。 */
     var keyBorders: Boolean
         get() = prefs.getBoolean(KEY_BORDERS, true)
@@ -70,12 +65,10 @@ class Settings(context: Context) {
     companion object {
         const val MIN_HEIGHT_PERCENT = 60
         const val MAX_HEIGHT_PERCENT = 150
-        const val MAX_BOTTOM_DP = 240
 
         private const val KEY_LAYOUT = "layout"
         private const val KEY_SYMBOL_LAYOUT = "symbol_layout"
         private const val KEY_KEYBOARD_HEIGHT = "keyboard_height"
-        private const val KEY_KEYBOARD_BOTTOM = "keyboard_bottom"
         private const val KEY_BORDERS = "key_borders"
         private const val KEY_QWERTY_NUMBER_ROW = "qwerty_number_row"
         private const val KEY_VIBRATE = "vibrate"
