@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -81,12 +80,10 @@ fun KeyboardScreen(
     modifier: Modifier = Modifier,
 ) {
     // 調整中は保存前の値で描き、完了したときにまとめて保存する
-    var draft by remember(state.resizing) {
-        mutableStateOf(KeyboardSize(state.keyboardHeightPercent.toFloat(), state.keyboardBottomDp.toFloat()))
-    }
-    val size = if (state.resizing) draft else KeyboardSize(state.keyboardHeightPercent.toFloat(), state.keyboardBottomDp.toFloat())
+    var draft by remember(state.resizing) { mutableStateOf(KeyboardHeight(state.keyboardHeightPercent.toFloat())) }
+    val height = if (state.resizing) draft else KeyboardHeight(state.keyboardHeightPercent.toFloat())
     // 全体の高さ設定は、ツールバーとキーの両方に同じ倍率で掛ける
-    val scale = size.heightPercent / 100f
+    val scale = height.percent / 100f
     val barHeight = (BarHeight * scale).coerceAtLeast(MinBarHeight)
     val numberRow = state.qwertyNumberRow &&
         (state.face == KeyboardFace.QwertyKana || state.face == KeyboardFace.QwertyAlphabet)
@@ -97,40 +94,38 @@ fun KeyboardScreen(
             modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceContainer)
-                .padding(bottom = navigationBarHeight()),
+                .padding(bottom = navigationBarHeight())
+                .padding(horizontal = 3.dp, vertical = 2.dp),
         ) {
-            Column(Modifier.padding(horizontal = 3.dp, vertical = 2.dp)) {
-                if (state.resizing) {
-                    // 倍率 1% あたりの高さ。ドラッグ量を倍率に直すのに使う。
-                    // ツールバーが最小の高さで止まっている間は、キーの段だけが伸び縮みする
-                    val barScales = BarHeight * scale > MinBarHeight
-                    val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * rows) / 100f
-                    ResizeBar(
-                        size = draft,
-                        percentHeight = percentHeight,
-                        onSizeChange = { draft = it },
-                        onReset = { draft = KeyboardSize.Default },
-                        onDone = { onAction(KeyAction.FinishResize(draft.heightPercent.roundToInt(), draft.bottomDp.roundToInt())) },
-                        modifier = Modifier.fillMaxWidth().height(barHeight),
-                    )
-                } else if (state.composing) {
-                    CandidateBar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
-                } else {
-                    Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
-                }
-                if (state.candidateListExpanded && state.composing) {
-                    CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-                } else if (state.panel == Panel.Voice) {
-                    VoicePanel(state.voice, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-                } else if (state.panel == Panel.Clipboard) {
-                    ClipboardPanel(state.clips, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-                } else if (state.panel == Panel.Cursor) {
-                    CursorPanel(state.selecting, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-                } else {
-                    KeyboardArea(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-                }
+            if (state.resizing) {
+                // 倍率 1% あたりの高さ。ドラッグ量を倍率に直すのに使う。
+                // ツールバーが最小の高さで止まっている間は、キーの段だけが伸び縮みする
+                val barScales = BarHeight * scale > MinBarHeight
+                val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * rows) / 100f
+                ResizeBar(
+                    height = draft,
+                    percentHeight = percentHeight,
+                    onHeightChange = { draft = it },
+                    onReset = { draft = KeyboardHeight.Default },
+                    onDone = { onAction(KeyAction.FinishResize(draft.percent.roundToInt())) },
+                    modifier = Modifier.fillMaxWidth().height(barHeight),
+                )
+            } else if (state.composing) {
+                CandidateBar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
+            } else {
+                Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
             }
-            Spacer(Modifier.height(size.bottomDp.dp))
+            if (state.candidateListExpanded && state.composing) {
+                CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+            } else if (state.panel == Panel.Voice) {
+                VoicePanel(state.voice, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+            } else if (state.panel == Panel.Clipboard) {
+                ClipboardPanel(state.clips, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+            } else if (state.panel == Panel.Cursor) {
+                CursorPanel(state.selecting, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+            } else {
+                KeyboardArea(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+            }
         }
     }
 }

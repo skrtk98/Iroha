@@ -108,7 +108,6 @@ class KeyboardController(
 
     private fun KeyboardUiState.withAppearance() = copy(
         keyboardHeightPercent = settings.keyboardHeightPercent,
-        keyboardBottomDp = settings.keyboardBottomDp,
         keyBorders = settings.keyBorders,
         qwertyNumberRow = settings.qwertyNumberRow,
         vibrate = settings.vibrate,
@@ -120,7 +119,7 @@ class KeyboardController(
         _state.update { if (it.panel == Panel.Voice) it.copy(panel = Panel.None, voice = VoiceUiState()) else it }
     }
 
-    /** キーボードが隠れたら、高さと位置の調整は保存せずに終える。欄の移動だけなら続ける。 */
+    /** キーボードが隠れたら、高さの調整は保存せずに終える。欄の移動だけなら続ける。 */
     fun onFinishInputView() {
         _state.update { it.copy(resizing = false) }
     }
@@ -185,7 +184,6 @@ class KeyboardController(
             KeyAction.RequestMicPermission -> host.requestMicPermission()
             is KeyAction.FinishResize -> {
                 settings.keyboardHeightPercent = action.heightPercent
-                settings.keyboardBottomDp = action.bottomDp
                 _state.update { it.copy(resizing = false).withAppearance() }
             }
             KeyAction.OpenSettings -> host.openSettings()

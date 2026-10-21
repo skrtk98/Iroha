@@ -40,9 +40,7 @@ data class KeyboardUiState(
     val spaceKind: SpaceKind = SpaceKind.Space,
     /** キーボード全体の高さの倍率（百分率）。 */
     val keyboardHeightPercent: Int = 100,
-    /** キーボードの下に空ける余白（dp）。 */
-    val keyboardBottomDp: Int = 0,
-    /** 高さと位置の調整中か。調整中はキーを押せない。 */
+    /** 高さの調整中か。上部のボタン列が調整バーになる。 */
     val resizing: Boolean = false,
     val keyBorders: Boolean = true,
     val qwertyNumberRow: Boolean = false,
