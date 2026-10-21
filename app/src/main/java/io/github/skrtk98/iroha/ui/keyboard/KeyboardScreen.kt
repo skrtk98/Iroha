@@ -119,8 +119,10 @@ fun KeyboardScreen(
                     }
                 }
                 if (state.resizing) {
-                    // 倍率 1% あたりの高さ。ドラッグ量を倍率に直すのに使う
-                    val percentHeight = (BarHeight + KeyHeight * rows) / 100f
+                    // 倍率 1% あたりの高さ。ドラッグ量を倍率に直すのに使う。
+                    // ツールバーが最小の高さで止まっている間は、キーの段だけが伸び縮みする
+                    val barScales = BarHeight * scale > MinBarHeight
+                    val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * rows) / 100f
                     ResizeFrame(
                         size = draft,
                         percentHeight = percentHeight,
