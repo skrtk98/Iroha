@@ -101,10 +101,10 @@ fun ResizeBar(
             .semantics { contentDescription = "上下にドラッグして高さを変える" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Label("高さ ${height.percent.roundToInt()}%")
-        Step(R.drawable.ic_remove, "低くする") { change(current.step(-1)) }
-        Step(R.drawable.ic_add, "高くする") { change(current.step(1)) }
         Step(R.drawable.ic_refresh, "リセット", onClick = onReset)
+        Step(R.drawable.ic_remove, "低くする") { change(current.step(-1)) }
+        Label("高さ ${height.percent.roundToInt()}%")
+        Step(R.drawable.ic_add, "高くする") { change(current.step(1)) }
         Step(R.drawable.ic_check, "完了", active = true, onClick = onDone)
     }
 }
@@ -113,9 +113,9 @@ fun ResizeBar(
 private fun RowScope.Label(text: String) {
     Text(
         text,
-        modifier = Modifier.padding(horizontal = 4.dp),
+        modifier = Modifier.padding(horizontal = 8.dp),
         color = MaterialTheme.colorScheme.onSecondaryContainer,
-        fontSize = 12.sp,
+        fontSize = 14.sp,
         maxLines = 1,
     )
 }
