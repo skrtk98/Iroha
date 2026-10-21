@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ripple
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -225,6 +226,8 @@ fun ToolbarButton(
         modifier
             .fillMaxHeight()
             .widthIn(min = BarHeight)
+            // バーが 48dp より低くても、IconButton と同じく押せる範囲は 48dp を保つ
+            .minimumInteractiveComponentSize()
             .combinedClickable(
                 interactionSource = null,
                 // 均等割りで横に広がっても、波紋はアイコンの周りだけに出す
