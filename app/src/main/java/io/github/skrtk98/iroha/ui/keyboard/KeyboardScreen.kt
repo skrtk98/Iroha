@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +41,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,9 +63,13 @@ import io.github.skrtk98.iroha.ime.KeyboardFace
 import io.github.skrtk98.iroha.ime.KeyboardUiState
 import io.github.skrtk98.iroha.ime.Panel
 import io.github.skrtk98.iroha.ui.theme.IrohaTheme
+import kotlin.math.roundToInt
 
 private val BarHeight = 44.dp
 private val MinBarHeight = 36.dp
+
+/** 倍率 100% のときのキー 1 段の高さ。 */
+private val KeyHeight = 52.dp
 
 /**
  * キーボード全体。状態とコールバックだけを受け取るので、プレビューやテストで単体表示できる。
@@ -74,37 +80,60 @@ fun KeyboardScreen(
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 調整中は保存前の値で描き、完了したときにまとめて保存する
+    var draft by remember(state.resizing) {
+        mutableStateOf(KeyboardSize(state.keyboardHeightPercent.toFloat(), state.keyboardBottomDp.toFloat()))
+    }
+    val size = if (state.resizing) draft else KeyboardSize(state.keyboardHeightPercent.toFloat(), state.keyboardBottomDp.toFloat())
     // 全体の高さ設定は、ツールバーとキーの両方に同じ倍率で掛ける
-    val scale = state.keyboardHeightPercent / 100f
+    val scale = size.heightPercent / 100f
     val barHeight = (BarHeight * scale).coerceAtLeast(MinBarHeight)
+    val numberRow = state.qwertyNumberRow &&
+        (state.face == KeyboardFace.QwertyKana || state.face == KeyboardFace.QwertyAlphabet)
+    val rows = if (numberRow) 4 + QwertyNumberRowWeight else 4f
+    val keyboardHeight = KeyHeight * rows * scale
     CompositionLocalProvider(LocalKeyHaptics provides state.vibrate, LocalKeyBorders provides state.keyBorders) {
         Column(
             modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceContainer)
-                .padding(bottom = navigationBarHeight())
-                .padding(horizontal = 3.dp, vertical = 2.dp),
+                .padding(bottom = navigationBarHeight()),
         ) {
-            if (state.composing) {
-                CandidateBar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
-            } else {
-                Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
+            Box {
+                Column(Modifier.padding(horizontal = 3.dp, vertical = 2.dp)) {
+                    if (state.composing) {
+                        CandidateBar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
+                    } else {
+                        Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
+                    }
+                    if (state.candidateListExpanded && state.composing) {
+                        CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+                    } else if (state.panel == Panel.Voice) {
+                        VoicePanel(state.voice, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+                    } else if (state.panel == Panel.Clipboard) {
+                        ClipboardPanel(state.clips, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+                    } else if (state.panel == Panel.Cursor) {
+                        CursorPanel(state.selecting, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+                    } else {
+                        KeyboardArea(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+                    }
+                }
+                if (state.resizing) {
+                    // 倍率 1% あたりの高さ。ドラッグ量を倍率に直すのに使う。
+                    // ツールバーが最小の高さで止まっている間は、キーの段だけが伸び縮みする
+                    val barScales = BarHeight * scale > MinBarHeight
+                    val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * rows) / 100f
+                    ResizeFrame(
+                        size = draft,
+                        percentHeight = percentHeight,
+                        onSizeChange = { draft = it },
+                        onReset = { draft = KeyboardSize.Default },
+                        onDone = { onAction(KeyAction.FinishResize(draft.heightPercent.roundToInt(), draft.bottomDp.roundToInt())) },
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
             }
-            val numberRow = state.qwertyNumberRow &&
-                (state.face == KeyboardFace.QwertyKana || state.face == KeyboardFace.QwertyAlphabet)
-            val rows = if (numberRow) 4 + QwertyNumberRowWeight else 4f
-            val keyboardHeight = state.keyHeightDp.dp * rows * scale
-            if (state.candidateListExpanded && state.composing) {
-                CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-            } else if (state.panel == Panel.Voice) {
-                VoicePanel(state.voice, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-            } else if (state.panel == Panel.Clipboard) {
-                ClipboardPanel(state.clips, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-            } else if (state.panel == Panel.Cursor) {
-                CursorPanel(state.selecting, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-            } else {
-                KeyboardArea(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
-            }
+            Spacer(Modifier.height(size.bottomDp.dp))
         }
     }
 }
