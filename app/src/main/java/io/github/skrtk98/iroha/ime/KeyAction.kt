@@ -16,8 +16,11 @@ sealed interface KeyAction {
     /** 濁点・半濁点・小書きの切り替え。 */
     data object ToggleModifier : KeyAction
 
-    /** 英字の大文字・小文字切り替え。 */
+    /** シフトのタップ。オフなら次の 1 文字だけ大文字にし、オンなら解除する。 */
     data object Shift : KeyAction
+
+    /** シフトの長押し。解除するまで大文字にする。 */
+    data object LockShift : KeyAction
 
     /** 日本語 ⇔ 英字。配列はそのままで、数字・記号の面からは切り替えた日英の面に戻る。 */
     data object ToggleKanaAlphabet : KeyAction

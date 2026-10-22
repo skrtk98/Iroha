@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -34,6 +35,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -78,17 +80,17 @@ private fun KeyStyle.content(pressed: Boolean): Color {
 private val KeyShape = RoundedCornerShape(8.dp)
 
 @Composable
-private fun rememberHaptic(): () -> Unit {
+private fun rememberHaptic(feedback: Int = HapticFeedbackConstants.KEYBOARD_TAP): () -> Unit {
     val view = LocalView.current
     val enabled = LocalKeyHaptics.current
-    return remember(view, enabled) {
-        { if (enabled) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) }
+    return remember(view, enabled, feedback) {
+        { if (enabled) view.performHapticFeedback(feedback) }
     }
 }
 
 /**
  * 押して離すと [onClick] が呼ばれるキー。[repeat] が true なら押した瞬間に 1 回呼び、
- * 押し続けると連続して呼ぶ。
+ * 押し続けると連続して呼ぶ。[onLongClick] があれば、長押しで代わりにそれを呼ぶ（[repeat] とは併用しない）。
  */
 @Composable
 fun KeyButton(
@@ -97,18 +99,31 @@ fun KeyButton(
     style: KeyStyle = KeyStyle.Character,
     repeat: Boolean = false,
     description: String? = null,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
     content: @Composable (contentColor: Color) -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
     val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
     val haptic = rememberHaptic()
+    val longHaptic = rememberHaptic(HapticFeedbackConstants.LONG_PRESS)
+    val longPress = onLongClick != null && !repeat
     Box(
         modifier = modifier
             .padding(3.dp)
             .clip(KeyShape)
             .background(style.container(pressed))
-            .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier)
-            .pointerInput(repeat) {
+            .semantics {
+                if (description != null) contentDescription = description
+                if (longPress) {
+                    onLongClick(label = longClickLabel) {
+                        currentOnLongClick?.invoke()
+                        true
+                    }
+                }
+            }
+            .pointerInput(repeat, longPress) {
                 coroutineScope {
                     awaitEachGesture {
                         awaitFirstDown()
@@ -128,8 +143,19 @@ fun KeyButton(
                             null
                         }
                         try {
-                            val up = waitForUpOrCancellation()
-                            if (!repeat && up != null) currentOnClick()
+                            if (longPress) {
+                                try {
+                                    val up = withTimeout(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation() }
+                                    if (up != null) currentOnClick()
+                                } catch (_: PointerEventTimeoutCancellationException) {
+                                    longHaptic()
+                                    currentOnLongClick?.invoke()
+                                    waitForUpOrCancellation()
+                                }
+                            } else {
+                                val up = waitForUpOrCancellation()
+                                if (!repeat && up != null) currentOnClick()
+                            }
                         } finally {
                             repeatJob?.cancel()
                             pressed = false
@@ -150,8 +176,10 @@ fun TextKey(
     modifier: Modifier = Modifier,
     style: KeyStyle = KeyStyle.Character,
     fontSize: TextUnit = 20.sp,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
 ) {
-    KeyButton(onClick = onClick, modifier = modifier, style = style, description = label) { color ->
+    KeyButton(onClick, modifier, style, description = label, onLongClick = onLongClick, longClickLabel = longClickLabel) { color ->
         Text(label, color = color, fontSize = fontSize, maxLines = 1)
     }
 }
@@ -164,8 +192,10 @@ fun IconKey(
     modifier: Modifier = Modifier,
     style: KeyStyle = KeyStyle.Function,
     repeat: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
 ) {
-    KeyButton(onClick = onClick, modifier = modifier, style = style, repeat = repeat, description = description) { color ->
+    KeyButton(onClick, modifier, style, repeat, description, onLongClick, longClickLabel) { color ->
         Icon(painterResource(icon), contentDescription = null, tint = color)
     }
 }

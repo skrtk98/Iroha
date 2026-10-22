@@ -24,6 +24,7 @@ import io.github.skrtk98.iroha.R
 import io.github.skrtk98.iroha.ime.EnterKind
 import io.github.skrtk98.iroha.ime.KeyAction
 import io.github.skrtk98.iroha.ime.KeyboardFace
+import io.github.skrtk98.iroha.ime.ShiftState
 import io.github.skrtk98.iroha.ime.SpaceKind
 
 @Composable
@@ -74,7 +75,7 @@ fun EnterKey(kind: EnterKind, composing: Boolean, onAction: (KeyAction) -> Unit,
 fun FlickKeyboard(
     face: KeyboardFace,
     textFace: KeyboardFace,
-    shifted: Boolean,
+    shift: ShiftState,
     composing: Boolean,
     enterKind: EnterKind,
     spaceKind: SpaceKind,
@@ -120,7 +121,7 @@ fun FlickKeyboard(
                                 else -> keys[row * 3 + col - if (row == 3) 1 else 0]
                             }
                             if (key == null) {
-                                ModifierKey(face, shifted, onAction, cellModifier)
+                                ModifierKey(face, shift, onAction, cellModifier)
                             } else {
                                 FlickKeyButton(
                                     key = key,
@@ -145,18 +146,42 @@ fun FlickKeyboard(
 }
 
 @Composable
-private fun ModifierKey(face: KeyboardFace, shifted: Boolean, onAction: (KeyAction) -> Unit, modifier: Modifier) {
+private fun ModifierKey(face: KeyboardFace, shift: ShiftState, onAction: (KeyAction) -> Unit, modifier: Modifier) {
     when (face) {
         KeyboardFace.FlickKana -> TextKey("゛゜小", { onAction(KeyAction.ToggleModifier) }, modifier, fontSize = 15.sp)
-        KeyboardFace.FlickAlphabet -> TextKey(
-            if (shifted) "A/a" else "a/A",
-            { onAction(KeyAction.Shift) },
-            modifier,
-            if (shifted) KeyStyle.Accent else KeyStyle.Character,
-            15.sp,
-        )
+        KeyboardFace.FlickAlphabet -> if (shift == ShiftState.Locked) {
+            ShiftKey(shift, onAction, modifier)
+        } else {
+            TextKey(
+                if (shift == ShiftState.Once) "A/a" else "a/A",
+                { onAction(KeyAction.Shift) },
+                modifier,
+                if (shift == ShiftState.Once) KeyStyle.Accent else KeyStyle.Character,
+                15.sp,
+                onLongClick = { onAction(KeyAction.LockShift) },
+                longClickLabel = "大文字に固定",
+            )
+        }
         else -> Unit
     }
+}
+
+/** シフトキー。タップで次の 1 文字だけ、長押しで解除するまで大文字にする。固定中は下線付きの矢印で示す。 */
+@Composable
+private fun ShiftKey(shift: ShiftState, onAction: (KeyAction) -> Unit, modifier: Modifier) {
+    IconKey(
+        if (shift == ShiftState.Locked) R.drawable.ic_keyboard_capslock else R.drawable.ic_keyboard_arrow_up,
+        when (shift) {
+            ShiftState.Off -> "シフト"
+            ShiftState.Once -> "シフト（1 文字）"
+            ShiftState.Locked -> "シフト（固定中）"
+        },
+        { onAction(KeyAction.Shift) },
+        modifier,
+        style = if (shift == ShiftState.Off) KeyStyle.Function else KeyStyle.Accent,
+        onLongClick = { onAction(KeyAction.LockShift) },
+        longClickLabel = "大文字に固定",
+    )
 }
 
 /** 数字の段の高さ。英字の段 1 段を 1 とした比。 */
@@ -167,7 +192,7 @@ const val QwertyNumberRowWeight = 0.8f
 fun QwertyKeyboard(
     face: KeyboardFace,
     textFace: KeyboardFace,
-    shifted: Boolean,
+    shift: ShiftState,
     composing: Boolean,
     enterKind: EnterKind,
     spaceKind: SpaceKind,
@@ -179,7 +204,7 @@ fun QwertyKeyboard(
     val rows: List<List<String>> = if (symbols) {
         KeyLayouts.symbolRows
     } else {
-        KeyLayouts.qwertyRows.map { row -> row.map { if (shifted) it.uppercaseChar().toString() else it.toString() } }
+        KeyLayouts.qwertyRows.map { row -> row.map { if (shift != ShiftState.Off) it.uppercaseChar().toString() else it.toString() } }
     }
     Column(modifier) {
         val rowModifier = Modifier.fillMaxWidth().weight(1f)
@@ -202,13 +227,7 @@ fun QwertyKeyboard(
             if (symbols) {
                 Spacer(Modifier.weight(0.5f))
             } else {
-                IconKey(
-                    R.drawable.ic_keyboard_arrow_up,
-                    "シフト",
-                    { onAction(KeyAction.Shift) },
-                    Modifier.weight(1.5f).fillMaxHeight(),
-                    style = if (shifted) KeyStyle.Accent else KeyStyle.Function,
-                )
+                ShiftKey(shift, onAction, Modifier.weight(1.5f).fillMaxHeight())
             }
             CharacterKeys(rows[2], onAction)
             BackspaceKey(onAction, Modifier.weight(1.5f).fillMaxHeight())

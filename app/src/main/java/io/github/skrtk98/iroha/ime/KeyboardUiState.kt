@@ -16,6 +16,16 @@ enum class EnterKind { Newline, Done, Go, Search, Send, Next, Confirm }
 
 enum class SpaceKind { Space, Convert, NextCandidate }
 
+/** シフトの状態。タップで次の 1 文字だけ、長押しで解除するまで大文字にする。 */
+enum class ShiftState {
+    Off, Once, Locked;
+
+    fun tap() = if (this == Off) Once else Off
+
+    /** 1 文字入力した後の状態。 */
+    fun afterInput() = if (this == Once) Off else this
+}
+
 enum class VoiceStatus { Idle, Listening, NeedsPermission, Error }
 
 @Immutable
@@ -30,7 +40,7 @@ data class KeyboardUiState(
     val face: KeyboardFace = KeyboardFace.FlickKana,
     /** 数字・記号の面から戻る先の日英の面。 */
     val textFace: KeyboardFace = KeyboardFace.FlickKana,
-    val shifted: Boolean = false,
+    val shift: ShiftState = ShiftState.Off,
     val composing: Boolean = false,
     val converting: Boolean = false,
     val candidates: List<String> = emptyList(),
@@ -51,4 +61,6 @@ data class KeyboardUiState(
     val selecting: Boolean = false,
     val clips: List<io.github.skrtk98.iroha.data.ClipEntry> = emptyList(),
     val voice: VoiceUiState = VoiceUiState(),
-)
+) {
+    val shifted get() = shift != ShiftState.Off
+}
