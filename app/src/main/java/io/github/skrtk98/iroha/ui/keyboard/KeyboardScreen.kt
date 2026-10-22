@@ -73,6 +73,9 @@ private val MinBarHeight = 36.dp
 /** 倍率 100% のときのキー 1 段の高さ。 */
 private val KeyHeight = 52.dp
 
+/** キーボードの高さを決める段数。数字の段を出しても増やさない。 */
+private const val KeyRows = 4
+
 /**
  * キーボード全体。状態とコールバックだけを受け取るので、プレビューやテストで単体表示できる。
  */
@@ -88,10 +91,8 @@ fun KeyboardScreen(
     // 全体の高さ設定は、ツールバーとキーの両方に同じ倍率で掛ける
     val scale = height.percent / 100f
     val barHeight = (BarHeight * scale).coerceAtLeast(MinBarHeight)
-    val numberRow = state.qwertyNumberRow &&
-        (state.face == KeyboardFace.QwertyKana || state.face == KeyboardFace.QwertyAlphabet)
-    val rows = if (numberRow) 4 + QwertyNumberRowWeight else 4f
-    val keyboardHeight = KeyHeight * rows * scale
+    // どの面・画面でも同じ高さにする。QWERTY の数字の段は、この高さの中で各段を少し低くして収める
+    val keyboardHeight = KeyHeight * KeyRows * scale
     CompositionLocalProvider(LocalKeyHaptics provides state.vibrate, LocalKeyBorders provides state.keyBorders) {
         Column(
             modifier
@@ -104,7 +105,7 @@ fun KeyboardScreen(
                 // 倍率 1% あたりの高さ。ドラッグ量を倍率に直すのに使う。
                 // ツールバーが最小の高さで止まっている間は、キーの段だけが伸び縮みする
                 val barScales = BarHeight * scale > MinBarHeight
-                val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * rows) / 100f
+                val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * KeyRows) / 100f
                 ResizeBar(
                     height = draft,
                     percentHeight = percentHeight,
