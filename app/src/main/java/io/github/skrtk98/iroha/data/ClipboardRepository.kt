@@ -47,6 +47,9 @@ class ClipboardRepository(
     /** 履歴を消去した回数。消去より前にコピーし、読み込み中だった画像を加えないために使う。メインスレッドだけで触る。 */
     private var clearCount = 0
 
+    /** 個別に消した画像と消した時刻。それより前にコピーし、読み込み中だった同じ画像を加えないために使う。 */
+    private val removedImages = HashMap<String, Long>()
+
     /** 保存を終えて、まだ履歴に加えていない画像のファイル名。 */
     private val pendingImages: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private var loaded = false
@@ -81,7 +84,10 @@ class ClipboardRepository(
     fun togglePin(key: String) = mutate { history.togglePin(key) }
 
     @MainThread
-    fun remove(key: String) = mutate { history.remove(key) }
+    fun remove(key: String) = mutate {
+        history.entries.firstOrNull { it.key == key }?.image?.let { removedImages[it] = System.currentTimeMillis() }
+        history.remove(key)
+    }
 
     @MainThread
     fun clearUnpinned() = mutate {
@@ -158,8 +164,9 @@ class ClipboardRepository(
                 name
             }.onFailure { Log.w(TAG, "failed to save clipboard image", it) }.getOrNull() ?: return@launch
             withContext(Dispatchers.Main) {
-                // 読み込み中に履歴が消去されたり、記録が止められたりしたら加えない
-                if (clearCount == clearsAtCopy && settings.clipboardHistory) {
+                // 読み込み中に履歴や同じ画像が消されたり、記録が止められたりしたら加えない
+                val removedAfterCopy = (removedImages[name] ?: Long.MIN_VALUE) >= time
+                if (clearCount == clearsAtCopy && !removedAfterCopy && settings.clipboardHistory) {
                     history.add(ClipEntry("", time = time, image = name))
                     publish()
                 }
