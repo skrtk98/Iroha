@@ -47,8 +47,12 @@ class ClipboardRepository(
     /** 履歴を消去した回数。消去より前にコピーし、読み込み中だった画像を加えないために使う。メインスレッドだけで触る。 */
     private var clearCount = 0
 
-    /** 個別に消した画像と消した時刻。それより前にコピーし、読み込み中だった同じ画像を加えないために使う。 */
+    /**
+     * 個別に消した画像と消した時刻。それより前にコピーし、読み込み中だった同じ画像を加えないために使う。
+     * 読み込み中の画像が無くなったら空にする。どちらもメインスレッドだけで触る。
+     */
     private val removedImages = HashMap<String, Long>()
+    private var importsInFlight = 0
 
     /** 保存を終えて、まだ履歴に加えていない画像のファイル名。 */
     private val pendingImages: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -85,7 +89,10 @@ class ClipboardRepository(
 
     @MainThread
     fun remove(key: String) = mutate {
-        history.entries.firstOrNull { it.key == key }?.image?.let { removedImages[it] = System.currentTimeMillis() }
+        // 読み込み中の画像があるときだけ、同じ画像が戻らないよう消した時刻を覚える
+        if (importsInFlight > 0) {
+            history.entries.firstOrNull { it.key == key }?.image?.let { removedImages[it] = System.currentTimeMillis() }
+        }
         history.remove(key)
     }
 
@@ -148,37 +155,51 @@ class ClipboardRepository(
         val input = runCatching { context.contentResolver.openInputStream(uri) }
             .onFailure { Log.w(TAG, "failed to open clipboard image", it) }
             .getOrNull() ?: return
+        importsInFlight++
         appScope.launch(Dispatchers.IO) {
-            val name = runCatching {
-                val bytes = input.use { it.readAtMost(MAX_IMAGE_BYTES) } ?: return@launch
-                // 宣言された型は image/* のように曖昧なことがあるので、形式は中身から決める
-                val extension = imageExtension(bytes) ?: return@launch
-                val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-                val name = "${hash.take(32)}.$extension"
-                saveMutex.withLock {
-                    val target = imageFile(context, name)
-                    target.parentFile?.mkdirs()
-                    val temp = File(target.parentFile, "$name.tmp")
-                    temp.writeBytes(bytes)
-                    check(temp.renameTo(target))
-                    // 履歴に加えるまでの間に、古い削除の後始末で消されないようにする
-                    pendingImages += name
-                }
-                name
-            }.onFailure { Log.w(TAG, "failed to save clipboard image", it) }.getOrNull() ?: return@launch
+            val name = runCatching { storeImage(input) }
+                .onFailure { Log.w(TAG, "failed to save clipboard image", it) }
+                .getOrNull()
             withContext(Dispatchers.Main) {
-                // 読み込み中に履歴や同じ画像が消されたり、記録が止められたりしたら加えない
-                val removedAfterCopy = (removedImages[name] ?: Long.MIN_VALUE) >= time
-                if (clearCount == clearsAtCopy && !removedAfterCopy && settings.clipboardHistory) {
-                    history.add(ClipEntry("", time = time, image = name))
-                    publish()
-                }
-                pendingImages -= name
-                // 加えなかった画像や、遅れて届いて件数の上限ですぐに外れた画像は残さない
-                if (history.entries.none { it.image == name }) {
-                    appScope.launch(Dispatchers.IO) { saveMutex.withLock { deleteUnusedImages(setOf(name)) } }
-                }
+                importsInFlight--
+                if (name != null) addImportedImage(name, time, clearsAtCopy)
+                // 読み込み中の画像が無くなれば、消した画像の記録はもう要らない
+                if (importsInFlight == 0) removedImages.clear()
             }
+        }
+    }
+
+    /** 画像を読み、中身のハッシュの名前で保存する。扱えない形式や大きすぎる画像なら null。 */
+    private suspend fun storeImage(input: InputStream): String? {
+        val bytes = input.use { it.readAtMost(MAX_IMAGE_BYTES) } ?: return null
+        // 宣言された型は image/* のように曖昧なことがあるので、形式は中身から決める
+        val extension = imageExtension(bytes) ?: return null
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val name = "${hash.take(32)}.$extension"
+        saveMutex.withLock {
+            val target = imageFile(context, name)
+            target.parentFile?.mkdirs()
+            val temp = File(target.parentFile, "$name.tmp")
+            temp.writeBytes(bytes)
+            check(temp.renameTo(target))
+            // 履歴に加えるまでの間に、古い削除の後始末で消されないようにする
+            pendingImages += name
+        }
+        return name
+    }
+
+    @MainThread
+    private fun addImportedImage(name: String, time: Long, clearsAtCopy: Int) {
+        // 読み込み中に履歴や同じ画像が消されたり、記録が止められたりしたら加えない
+        val removedAfterCopy = (removedImages[name] ?: Long.MIN_VALUE) >= time
+        if (clearCount == clearsAtCopy && !removedAfterCopy && settings.clipboardHistory) {
+            history.add(ClipEntry("", time = time, image = name))
+            publish()
+        }
+        pendingImages -= name
+        // 加えなかった画像や、遅れて届いて件数の上限ですぐに外れた画像は残さない
+        if (history.entries.none { it.image == name }) {
+            appScope.launch(Dispatchers.IO) { saveMutex.withLock { deleteUnusedImages(setOf(name)) } }
         }
     }
 
