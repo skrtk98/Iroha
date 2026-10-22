@@ -138,7 +138,8 @@ class ClipboardRepository(
                     temp.writeText(snapshot)
                     check(temp.renameTo(file))
                 }.onFailure { Log.w(TAG, "failed to save clipboard history", it) }
-                deleteUnusedImages(removed)
+                    // 保存に失敗したら、ファイルに残る古い履歴が指す画像を消さない
+                    .onSuccess { deleteUnusedImages(removed) }
             }
         }
     }
