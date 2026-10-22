@@ -33,7 +33,7 @@ fun CursorPanel(
         Row(Modifier.weight(1f).fillMaxWidth()) {
             IconKey(R.drawable.ic_keyboard_arrow_left, "左へ", { send(CursorCommand.Left) }, cell.weight(1f), KeyStyle.Character, repeat = true)
             IconKey(
-                R.drawable.ic_text_cursor,
+                R.drawable.ic_select,
                 if (selecting) "選択中" else "選択",
                 { send(CursorCommand.ToggleSelection) },
                 cell.weight(1f),
@@ -50,7 +50,7 @@ fun CursorPanel(
             IconKey(R.drawable.ic_select_all, "すべて選択", { send(CursorCommand.SelectAll) }, cell.weight(1f))
             IconKey(R.drawable.ic_content_copy, "コピー", { send(CursorCommand.Copy) }, cell.weight(1f))
             IconKey(R.drawable.ic_content_cut, "切り取り", { send(CursorCommand.Cut) }, cell.weight(1f))
-            IconKey(R.drawable.ic_paste_text, "貼り付け", { send(CursorCommand.Paste) }, cell.weight(1f))
+            IconKey(R.drawable.ic_content_paste_go, "貼り付け", { send(CursorCommand.Paste) }, cell.weight(1f))
         }
     }
 }
