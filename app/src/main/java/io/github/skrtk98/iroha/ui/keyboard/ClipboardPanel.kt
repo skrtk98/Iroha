@@ -83,9 +83,11 @@ private fun ClipCard(clip: ClipEntry, onAction: (KeyAction) -> Unit) {
         Text(
             clip.text,
             modifier = Modifier.weight(1f).padding(start = 10.dp, top = 6.dp, bottom = 6.dp),
+            // 背景色に合わせた文字色を明示する。指定しないと IME の画面では薄い既定色になる
+            color = if (clip.pinned) colors.onSecondaryContainer else colors.onSurface,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
         )
         Column {
             IconButton(onClick = { onAction(KeyAction.TogglePinClip(clip.text)) }, modifier = Modifier.size(36.dp)) {
