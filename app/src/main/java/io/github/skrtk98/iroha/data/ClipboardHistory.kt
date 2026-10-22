@@ -25,14 +25,18 @@ class ClipboardHistory(private val maxUnpinned: Int = 30, private val maxPinned:
 
     fun add(text: String, time: Long) = add(ClipEntry(text, time = time))
 
-    /** [clip] を先頭に加える。既にある項目なら固定の状態を引き継いで先頭に移す。 */
+    /**
+     * [clip] を時刻の順の位置に加える。普通は先頭になるが、画像のように読み込みに時間がかかり、
+     * 後からコピーしたものより遅れて届いた項目はその後ろに入れる。既にある項目なら固定の状態を引き継ぐ。
+     */
     fun add(clip: ClipEntry) {
         if (clip.image == null && clip.text.isBlank()) return
         val existing = entries.firstOrNull { it.key == clip.key }
         val entry = clip.copy(pinned = existing?.pinned ?: false)
         val rest = entries.filterNot { it.key == clip.key }
-        var unpinned = if (entry.pinned) 0 else 1
-        entries = listOf(entry) + rest.filter { it.pinned || ++unpinned <= maxUnpinned }
+        val index = rest.indexOfFirst { it.time <= entry.time }.let { if (it < 0) rest.size else it }
+        var unpinned = 0
+        entries = (rest.take(index) + entry + rest.drop(index)).filter { it.pinned || ++unpinned <= maxUnpinned }
     }
 
     /** 固定数が上限に達しているときは新たに固定しない。固定の解除はいつでもできる。 */
