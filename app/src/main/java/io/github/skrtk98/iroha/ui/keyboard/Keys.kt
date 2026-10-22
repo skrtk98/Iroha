@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -47,6 +48,9 @@ import kotlin.math.abs
 /** キー押下時に振動させるかどうか。 */
 val LocalKeyHaptics = staticCompositionLocalOf { true }
 
+/** キーの背景（枠）を描くかどうか。false でも確定キーなどの強調キーと押下中の表示は残す。 */
+val LocalKeyBorders = staticCompositionLocalOf { true }
+
 enum class KeyStyle { Character, Function, Accent }
 
 @Composable
@@ -54,6 +58,7 @@ private fun KeyStyle.container(pressed: Boolean): Color {
     val colors = MaterialTheme.colorScheme
     return when {
         pressed -> colors.primaryContainer
+        this != KeyStyle.Accent && !LocalKeyBorders.current -> Color.Transparent
         this == KeyStyle.Character -> colors.surfaceContainerHighest
         this == KeyStyle.Function -> colors.surfaceContainerHigh
         else -> colors.primary
@@ -242,13 +247,18 @@ fun FlickKeyButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            key.label,
-            color = KeyStyle.Character.content(pressed),
-            fontSize = if (key.label.length > 2) 15.sp else 20.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-        )
+        val color = KeyStyle.Character.content(pressed)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                key.label,
+                color = color,
+                fontSize = if (key.label.length > 2) 15.sp else 20.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+            // フリックで出せる文字を小さく添える（数字テンキーの記号など）
+            key.hint?.let { Text(it, color = color.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1) }
+        }
     }
 }
 

@@ -1,7 +1,6 @@
 package io.github.skrtk98.iroha.ime
 
 import androidx.compose.runtime.Immutable
-import io.github.skrtk98.iroha.data.KeyboardLayout
 
 /** 表示中のキー配列。 */
 enum class KeyboardFace {
@@ -11,7 +10,6 @@ enum class KeyboardFace {
     QwertyKana,
     QwertyAlphabet,
     QwertySymbols,
-    NumberPad,
 }
 
 enum class EnterKind { Newline, Done, Go, Search, Send, Next, Confirm }
@@ -29,8 +27,9 @@ data class VoiceUiState(
 
 @Immutable
 data class KeyboardUiState(
-    val layout: KeyboardLayout = KeyboardLayout.Flick,
     val face: KeyboardFace = KeyboardFace.FlickKana,
+    /** 数字・記号の面から戻る先の日英の面。 */
+    val textFace: KeyboardFace = KeyboardFace.FlickKana,
     val shifted: Boolean = false,
     val composing: Boolean = false,
     val converting: Boolean = false,
@@ -39,7 +38,12 @@ data class KeyboardUiState(
     val candidateListExpanded: Boolean = false,
     val enterKind: EnterKind = EnterKind.Newline,
     val spaceKind: SpaceKind = SpaceKind.Space,
-    val keyHeightDp: Int = 52,
+    /** キーボード全体の高さの倍率（百分率）。 */
+    val keyboardHeightPercent: Int = 100,
+    /** 高さの調整中か。上部のボタン列が調整バーになる。 */
+    val resizing: Boolean = false,
+    val keyBorders: Boolean = true,
+    val qwertyNumberRow: Boolean = false,
     val vibrate: Boolean = true,
     val loading: Boolean = false,
     val panel: Panel = Panel.None,

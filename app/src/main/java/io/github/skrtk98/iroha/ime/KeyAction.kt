@@ -17,17 +17,17 @@ sealed interface KeyAction {
     /** 英字の大文字・小文字切り替え。 */
     data object Shift : KeyAction
 
-    /** フリックのかな → 英字 → 数字の切り替え。 */
+    /** フリックのかな ⇔ 英字。 */
     data object CycleMode : KeyAction
 
     /** QWERTY のかな ⇔ 英字。 */
     data object ToggleKanaAlphabet : KeyAction
 
-    /** QWERTY の記号面。 */
+    /** 日英 ⇔ 数字・記号。それぞれ設定した配列の面に切り替える。 */
     data object ToggleSymbols : KeyAction
 
-    data class SwitchLayout(val layout: io.github.skrtk98.iroha.data.KeyboardLayout) : KeyAction
-    data object ToggleNumberPad : KeyAction
+    /** 表示中の種類（日英か数字・記号か）の配列をフリック ⇔ QWERTY で切り替え、設定にも保存する。 */
+    data object ToggleLayout : KeyAction
 
     data class SelectCandidate(val index: Int) : KeyAction
     data object ToggleCandidateList : KeyAction
@@ -52,6 +52,9 @@ sealed interface KeyAction {
 
     /** マイクの権限を得るため設定画面を開く。 */
     data object RequestMicPermission : KeyAction
+
+    /** 調整した高さ（百分率）を保存して調整を終える。 */
+    data class FinishResize(val heightPercent: Int) : KeyAction
 
     data object OpenSettings : KeyAction
     data object SwitchInputMethod : KeyAction
