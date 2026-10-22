@@ -93,11 +93,15 @@ class InputConnectionBridge(
     override fun moveCursor(delta: Int) {
         val ic = connection() ?: return
         val code = if (delta < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
-        repeat(kotlin.math.abs(delta)) { sendKey(ic, code) }
+        repeat(kotlin.math.abs(delta)) {
+            if (blockedAtEdge(ic, code, select = false)) return
+            sendKey(ic, code)
+        }
     }
 
     override fun sendNavigationKey(keyCode: Int, select: Boolean) {
         val ic = connection() ?: return
+        if (blockedAtEdge(ic, keyCode, select)) return
         val meta = if (select) KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON else 0
         val now = android.os.SystemClock.uptimeMillis()
         ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta))
@@ -123,8 +127,37 @@ class InputConnectionBridge(
         )
     }
 
+    private fun blockedAtEdge(ic: InputConnection, keyCode: Int, select: Boolean) = isBlockedAtEdge(
+        keyCode,
+        select,
+        hasSelection = !ic.getSelectedText(0).isNullOrEmpty(),
+        before = { ic.getTextBeforeCursor(1, 0) },
+        after = { ic.getTextAfterCursor(1, 0) },
+    )
+
     private fun sendKey(ic: InputConnection, code: Int) {
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+    }
+}
+
+/**
+ * 文頭で ← ↑、文末で → ↓ を送らないか。欄が処理できない方向キーは隣の部品へのフォーカス移動に使われ、
+ * 欄からフォーカスが外れてキーボードが閉じてしまう。選択を伸ばさずに ← → を押すと選択を畳むだけなので送る。
+ * [before] と [after] はカーソルの前後 1 文字で、欄が答えなければ null（そのときは送る）。
+ */
+internal fun isBlockedAtEdge(
+    keyCode: Int,
+    select: Boolean,
+    hasSelection: Boolean,
+    before: () -> CharSequence?,
+    after: () -> CharSequence?,
+): Boolean {
+    val horizontal = keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+    if (horizontal && hasSelection && !select) return false
+    return when (keyCode) {
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP -> before()?.isEmpty() == true
+        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_DOWN -> after()?.isEmpty() == true
+        else -> false
     }
 }
