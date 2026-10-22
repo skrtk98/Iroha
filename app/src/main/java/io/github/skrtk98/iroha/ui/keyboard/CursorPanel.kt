@@ -25,7 +25,7 @@ fun CursorPanel(
     // キーボードへは上部のカーソル移動ボタンで戻る
     Column(modifier) {
         Row(Modifier.weight(1f).fillMaxWidth()) {
-            IconKey(R.drawable.ic_deselect, "選択を解除", { send(CursorCommand.Deselect) }, cell.weight(1f))
+            IconKey(R.drawable.ic_remove_selection, "選択を解除", { send(CursorCommand.Deselect) }, cell.weight(1f))
             IconKey(R.drawable.ic_keyboard_arrow_up, "上へ", { send(CursorCommand.Up) }, cell.weight(1f), KeyStyle.Character, repeat = true)
             BackspaceKey(onAction, cell.weight(1f))
         }
