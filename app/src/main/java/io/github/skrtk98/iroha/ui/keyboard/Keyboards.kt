@@ -240,18 +240,24 @@ fun QwertyKeyboard(
                 KeyStyle.Function,
                 14.sp,
             )
-            // 日英の切り替えは上部のボタンで行う
-            SpaceKey(spaceKind, onAction, Modifier.weight(if (symbols) 5.5f else 4.4f).fillMaxHeight())
-            val punctuation = when {
-                symbols -> listOf("-", ",", ".")
-                kana -> listOf("！", "？", "、", "。")
-                else -> listOf("!", "?", ",", ".")
+            // 空白が中央に来るよう、左右に同じ数の記号を置く。日英の切り替えは上部のボタンで行う
+            val (left, right) = when {
+                symbols -> listOf(",") to listOf(".")
+                kana -> listOf("！", "？") to listOf("、", "。")
+                else -> listOf("!", "?") to listOf(",", ".")
             }
-            for (p in punctuation) {
-                TextKey(p, { onAction(KeyAction.Text(p)) }, Modifier.weight(0.9f).fillMaxHeight())
-            }
+            PunctuationKeys(left, onAction)
+            SpaceKey(spaceKind, onAction, Modifier.weight(if (symbols) 6.2f else 4.4f).fillMaxHeight())
+            PunctuationKeys(right, onAction)
             EnterKey(enterKind, composing, onAction, Modifier.weight(1.5f).fillMaxHeight())
         }
+    }
+}
+
+@Composable
+private fun RowScope.PunctuationKeys(keys: List<String>, onAction: (KeyAction) -> Unit) {
+    for (key in keys) {
+        TextKey(key, { onAction(KeyAction.Text(key)) }, Modifier.weight(0.9f).fillMaxHeight())
     }
 }
 
