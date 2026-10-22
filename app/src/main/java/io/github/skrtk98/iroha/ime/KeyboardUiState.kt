@@ -41,6 +41,8 @@ data class KeyboardUiState(
     /** 数字・記号の面から戻る先の日英の面。 */
     val textFace: KeyboardFace = KeyboardFace.FlickKana,
     val shift: ShiftState = ShiftState.Off,
+    /** QWERTY の数字・記号の面で、2 ページ目を出しているか。 */
+    val moreSymbols: Boolean = false,
     val composing: Boolean = false,
     val converting: Boolean = false,
     val candidates: List<String> = emptyList(),

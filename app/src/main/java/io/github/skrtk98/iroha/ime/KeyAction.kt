@@ -28,6 +28,9 @@ sealed interface KeyAction {
     /** 日英 ⇔ 数字・記号。それぞれ設定した配列の面に切り替える。 */
     data object ToggleSymbols : KeyAction
 
+    /** QWERTY の数字・記号の面で、1 ページ目 ⇔ 2 ページ目。 */
+    data object ToggleMoreSymbols : KeyAction
+
     data class SelectCandidate(val index: Int) : KeyAction
     data object ToggleCandidateList : KeyAction
 

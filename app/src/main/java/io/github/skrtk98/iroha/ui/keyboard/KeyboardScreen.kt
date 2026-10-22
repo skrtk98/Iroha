@@ -180,6 +180,7 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             enterKind = state.enterKind,
             spaceKind = state.spaceKind,
             numberRow = state.qwertyNumberRow,
+            moreSymbols = state.moreSymbols,
             onAction = onAction,
             modifier = modifier,
         )
