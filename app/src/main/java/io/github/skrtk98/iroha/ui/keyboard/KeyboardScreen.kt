@@ -4,18 +4,26 @@ import android.view.View
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.ripple
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -24,7 +32,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,14 +57,18 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.unit.sp
 import io.github.skrtk98.iroha.R
-import io.github.skrtk98.iroha.data.KeyboardLayout
 import io.github.skrtk98.iroha.ime.KeyAction
 import io.github.skrtk98.iroha.ime.KeyboardFace
 import io.github.skrtk98.iroha.ime.KeyboardUiState
 import io.github.skrtk98.iroha.ime.Panel
 import io.github.skrtk98.iroha.ui.theme.IrohaTheme
+import kotlin.math.roundToInt
 
 private val BarHeight = 44.dp
+private val MinBarHeight = 36.dp
+
+/** 倍率 100% のときのキー 1 段の高さ。 */
+private val KeyHeight = 52.dp
 
 /**
  * キーボード全体。状態とコールバックだけを受け取るので、プレビューやテストで単体表示できる。
@@ -67,7 +79,17 @@ fun KeyboardScreen(
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    CompositionLocalProvider(LocalKeyHaptics provides state.vibrate) {
+    // 調整中は保存前の値で描き、完了したときにまとめて保存する
+    var draft by remember(state.resizing) { mutableStateOf(KeyboardHeight(state.keyboardHeightPercent.toFloat())) }
+    val height = if (state.resizing) draft else KeyboardHeight(state.keyboardHeightPercent.toFloat())
+    // 全体の高さ設定は、ツールバーとキーの両方に同じ倍率で掛ける
+    val scale = height.percent / 100f
+    val barHeight = (BarHeight * scale).coerceAtLeast(MinBarHeight)
+    val numberRow = state.qwertyNumberRow &&
+        (state.face == KeyboardFace.QwertyKana || state.face == KeyboardFace.QwertyAlphabet)
+    val rows = if (numberRow) 4 + QwertyNumberRowWeight else 4f
+    val keyboardHeight = KeyHeight * rows * scale
+    CompositionLocalProvider(LocalKeyHaptics provides state.vibrate, LocalKeyBorders provides state.keyBorders) {
         Column(
             modifier
                 .fillMaxWidth()
@@ -75,12 +97,24 @@ fun KeyboardScreen(
                 .padding(bottom = navigationBarHeight())
                 .padding(horizontal = 3.dp, vertical = 2.dp),
         ) {
-            if (state.composing) {
-                CandidateBar(state, onAction, Modifier.fillMaxWidth().height(BarHeight))
+            if (state.resizing) {
+                // 倍率 1% あたりの高さ。ドラッグ量を倍率に直すのに使う。
+                // ツールバーが最小の高さで止まっている間は、キーの段だけが伸び縮みする
+                val barScales = BarHeight * scale > MinBarHeight
+                val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * rows) / 100f
+                ResizeBar(
+                    height = draft,
+                    percentHeight = percentHeight,
+                    onHeightChange = { draft = it },
+                    onReset = { draft = KeyboardHeight.Default },
+                    onDone = { onAction(KeyAction.FinishResize(draft.percent.roundToInt())) },
+                    modifier = Modifier.fillMaxWidth().height(barHeight),
+                )
+            } else if (state.composing) {
+                CandidateBar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
             } else {
-                Toolbar(state, onAction, Modifier.fillMaxWidth().height(BarHeight))
+                Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
             }
-            val keyboardHeight = state.keyHeightDp.dp * 4
             if (state.candidateListExpanded && state.composing) {
                 CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             } else if (state.panel == Panel.Voice) {
@@ -127,58 +161,115 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
     when (state.face) {
         KeyboardFace.FlickKana, KeyboardFace.FlickAlphabet, KeyboardFace.FlickNumber -> FlickKeyboard(
             face = state.face,
+            textFace = state.textFace,
             shifted = state.shifted,
             composing = state.composing,
             enterKind = state.enterKind,
             spaceKind = state.spaceKind,
-            keyHeightDp = state.keyHeightDp,
             onAction = onAction,
             modifier = modifier,
         )
         KeyboardFace.QwertyKana, KeyboardFace.QwertyAlphabet, KeyboardFace.QwertySymbols -> QwertyKeyboard(
             face = state.face,
+            textFace = state.textFace,
             shifted = state.shifted,
             composing = state.composing,
             enterKind = state.enterKind,
             spaceKind = state.spaceKind,
-            keyHeightDp = state.keyHeightDp,
+            numberRow = state.qwertyNumberRow,
             onAction = onAction,
             modifier = modifier,
         )
-        KeyboardFace.NumberPad -> NumberPad(state.enterKind, state.keyHeightDp, onAction, modifier)
     }
 }
 
+/**
+ * 上部のボタン列。どの面でも使う機能を均等に並べる。キーボードを閉じる・入力方法の切り替えは
+ * ナビゲーションバーにもシステムのボタンがあるので、ここでは長押しに割り当てて場所を取らない。
+ */
 @Composable
 private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modifier: Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        ToolbarButton(R.drawable.ic_settings, "設定") { onAction(KeyAction.OpenSettings) }
-        ToolbarButton(R.drawable.ic_content_paste, "クリップボード") {
-            onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
+    Box(modifier) {
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            val cell = Modifier.weight(1f)
+            ToolbarButton(
+                R.drawable.ic_settings,
+                "設定",
+                cell,
+                onLongClick = { onAction(KeyAction.HideKeyboard) },
+                longClickLabel = "キーボードを閉じる",
+            ) { onAction(KeyAction.OpenSettings) }
+            LayoutSwitchButton(onAction, cell)
+            ToolbarButton(R.drawable.ic_content_paste, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
+                onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
+            }
+            ToolbarButton(R.drawable.ic_open_with, "カーソル移動", cell, active = state.panel == Panel.Cursor) {
+                onAction(if (state.panel == Panel.Cursor) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Cursor))
+            }
+            ToolbarButton(R.drawable.ic_mic, "音声入力", cell, active = state.panel == Panel.Voice) {
+                onAction(if (state.panel == Panel.Voice) KeyAction.ClosePanel else KeyAction.StartVoice)
+            }
         }
-        ToolbarButton(R.drawable.ic_open_with, "カーソル移動") {
-            onAction(if (state.panel == Panel.Cursor) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Cursor))
-        }
-        ToolbarButton(R.drawable.ic_mic, "音声入力") {
-            onAction(if (state.panel == Panel.Voice) KeyAction.ClosePanel else KeyAction.StartVoice)
-        }
-        ToolbarButton(R.drawable.ic_dialpad, "テンキー") { onAction(KeyAction.ToggleNumberPad) }
-        val other = if (state.layout == KeyboardLayout.Flick) KeyboardLayout.Qwerty else KeyboardLayout.Flick
-        ToolbarButton(R.drawable.ic_keyboard, "配列を切り替え") { onAction(KeyAction.SwitchLayout(other)) }
-        Spacer(Modifier.weight(1f))
         if (state.loading) {
-            Text("辞書を読み込み中…", style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.weight(1f))
+            LinearProgressIndicator(
+                Modifier.fillMaxWidth().align(Alignment.BottomCenter).semantics { contentDescription = "辞書を読み込み中" },
+            )
         }
-        ToolbarButton(R.drawable.ic_language, "入力方法を切り替え") { onAction(KeyAction.SwitchInputMethod) }
-        ToolbarButton(R.drawable.ic_keyboard_hide, "キーボードを閉じる") { onAction(KeyAction.HideKeyboard) }
     }
 }
 
+/** 配列の切り替え。長押しで次の入力方法に切り替える。 */
 @Composable
-fun ToolbarButton(@DrawableRes icon: Int, description: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(BarHeight)) {
-        Icon(painterResource(icon), contentDescription = description, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun LayoutSwitchButton(onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
+    ToolbarButton(
+        R.drawable.ic_keyboard,
+        "配列を切り替え",
+        modifier,
+        onLongClick = { onAction(KeyAction.SwitchInputMethod) },
+        longClickLabel = "入力方法を切り替え",
+    ) { onAction(KeyAction.ToggleLayout) }
+}
+
+/** 上部のアイコンボタン。[onLongClick] があれば長押しにも反応し、振動で知らせる。 */
+@Composable
+fun ToolbarButton(
+    @DrawableRes icon: Int,
+    description: String,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val haptic = LocalHapticFeedback.current
+    Box(
+        modifier
+            .fillMaxHeight()
+            .widthIn(min = BarHeight)
+            // バーが 48dp より低くても、IconButton と同じく押せる範囲は 48dp を保つ
+            .minimumInteractiveComponentSize()
+            .combinedClickable(
+                interactionSource = null,
+                // 均等割りで横に広がっても、波紋はアイコンの周りだけに出す
+                indication = ripple(bounded = false, radius = BarHeight / 2),
+                role = Role.Button,
+                onLongClickLabel = longClickLabel,
+                onLongClick = onLongClick?.let { action ->
+                    {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        action()
+                    }
+                },
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painterResource(icon),
+            contentDescription = description,
+            tint = if (active) colors.primary else colors.onSurfaceVariant,
+        )
     }
 }
 
@@ -208,6 +299,9 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
         }
         if (state.converting) {
             ToolbarButton(R.drawable.ic_last_page, "文節を伸ばす") { onAction(KeyAction.ResizeSegment(1)) }
+        } else {
+            // 入力中はツールバーが隠れるので、配列の切り替えだけはここに残す
+            LayoutSwitchButton(onAction)
         }
         ToolbarButton(
             if (state.candidateListExpanded) R.drawable.ic_keyboard_arrow_up else R.drawable.ic_keyboard_arrow_down,

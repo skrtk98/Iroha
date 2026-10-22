@@ -5,7 +5,6 @@ import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import io.github.skrtk98.iroha.data.ClipboardRepository
 import io.github.skrtk98.iroha.data.Engine
-import io.github.skrtk98.iroha.data.KeyboardLayout
 import io.github.skrtk98.iroha.data.Settings
 import io.github.skrtk98.iroha.engine.conv.Candidate
 import io.github.skrtk98.iroha.engine.session.ComposingSession
@@ -60,6 +59,16 @@ class KeyboardController(
     init {
         scope.launch { collectSuggestions() }
         scope.launch { clipboard.entries.collect { clips -> _state.update { it.copy(clips = clips) } } }
+        // 設定画面の試し入力欄で、見た目の変更をすぐ確かめられるようにする
+        scope.launch { settings.changes.collect { _state.update { it.withAppearance() } } }
+        scope.launch {
+            ResizeRequest.pending.collect { requested ->
+                if (!requested) return@collect
+                ResizeRequest.pending.value = false
+                commitAll()
+                _state.update { it.copy(resizing = true, panel = Panel.None, candidateListExpanded = false) }
+            }
+        }
     }
 
     fun onEngineLoaded(engine: Engine) {
@@ -79,32 +88,40 @@ class KeyboardController(
             inputClass == InputType.TYPE_CLASS_PHONE ||
             inputClass == InputType.TYPE_CLASS_DATETIME
         val isAscii = inputClass == InputType.TYPE_CLASS_TEXT && variation in ASCII_VARIATIONS
-        val face = when {
-            isNumeric -> KeyboardFace.NumberPad
-            isAscii -> if (layout == KeyboardLayout.Flick) KeyboardFace.FlickAlphabet else KeyboardFace.QwertyAlphabet
-            else -> if (layout == KeyboardLayout.Flick) KeyboardFace.FlickKana else KeyboardFace.QwertyKana
-        }
+        val textFace = Faces.text(layout, alphabet = isAscii)
+        // 数値欄は数字の打ちやすいテンキー（フリック）にする
+        val face = if (isNumeric) KeyboardFace.FlickNumber else textFace
         directInput = isNumeric || isAscii
         _state.update {
             it.copy(
-                layout = layout,
                 face = face,
+                textFace = textFace,
                 shifted = false,
                 enterKind = enterKindOf(info),
-                keyHeightDp = settings.keyHeightDp,
-                vibrate = settings.vibrate,
                 candidateListExpanded = false,
                 panel = if (restarting) it.panel else Panel.None,
                 selecting = restarting && it.selecting,
-            )
+            ).withAppearance()
         }
         render()
     }
+
+    private fun KeyboardUiState.withAppearance() = copy(
+        keyboardHeightPercent = settings.keyboardHeightPercent,
+        keyBorders = settings.keyBorders,
+        qwertyNumberRow = settings.qwertyNumberRow,
+        vibrate = settings.vibrate,
+    )
 
     fun onFinishInput() {
         resetComposition()
         voice.cancel()
         _state.update { if (it.panel == Panel.Voice) it.copy(panel = Panel.None, voice = VoiceUiState()) else it }
+    }
+
+    /** キーボードが隠れたら、高さの調整は保存せずに終える。欄の移動だけなら続ける。 */
+    fun onFinishInputView() {
+        _state.update { it.copy(resizing = false) }
     }
 
     /** エディタ側でカーソルが未確定文字列の外へ動いたら、入力を打ち切る。 */
@@ -132,18 +149,15 @@ class KeyboardController(
             KeyAction.ToggleKanaAlphabet -> switchFace(
                 if (_state.value.face == KeyboardFace.QwertyKana) KeyboardFace.QwertyAlphabet else KeyboardFace.QwertyKana,
             )
-            KeyAction.ToggleSymbols -> switchFace(
-                if (_state.value.face == KeyboardFace.QwertySymbols) KeyboardFace.QwertyKana else KeyboardFace.QwertySymbols,
-            )
-            is KeyAction.SwitchLayout -> {
-                settings.defaultLayout = action.layout
-                commitAll()
-                switchFace(if (action.layout == KeyboardLayout.Flick) KeyboardFace.FlickKana else KeyboardFace.QwertyKana)
-                _state.update { it.copy(layout = action.layout) }
+            KeyAction.ToggleSymbols -> {
+                val state = _state.value
+                switchFace(if (Faces.isSymbol(state.face)) state.textFace else Faces.symbol(settings.symbolLayout))
             }
-            KeyAction.ToggleNumberPad -> switchFace(
-                if (_state.value.face == KeyboardFace.NumberPad) defaultFace() else KeyboardFace.NumberPad,
-            )
+            KeyAction.ToggleLayout -> {
+                val next = Faces.otherLayout(_state.value.face)
+                if (Faces.isSymbol(next)) settings.symbolLayout = Faces.layoutOf(next) else settings.defaultLayout = Faces.layoutOf(next)
+                switchFace(next)
+            }
             is KeyAction.SelectCandidate -> selectCandidate(action.index)
             KeyAction.ToggleCandidateList -> _state.update { it.copy(candidateListExpanded = !it.candidateListExpanded) }
             is KeyAction.ResizeSegment -> if (session?.resizeSegment(action.delta) == true) render()
@@ -168,6 +182,10 @@ class KeyboardController(
             KeyAction.StartVoice -> startVoice()
             KeyAction.StopVoice -> voice.stop()
             KeyAction.RequestMicPermission -> host.requestMicPermission()
+            is KeyAction.FinishResize -> {
+                settings.keyboardHeightPercent = action.heightPercent
+                _state.update { it.copy(resizing = false).withAppearance() }
+            }
             KeyAction.OpenSettings -> host.openSettings()
             KeyAction.SwitchInputMethod -> host.switchInputMethod()
             KeyAction.HideKeyboard -> host.hideKeyboard()
@@ -284,17 +302,14 @@ class KeyboardController(
     }
 
     private fun cycleFlickMode() {
-        val next = when (_state.value.face) {
-            KeyboardFace.FlickKana -> KeyboardFace.FlickAlphabet
-            KeyboardFace.FlickAlphabet -> KeyboardFace.FlickNumber
-            else -> KeyboardFace.FlickKana
-        }
-        switchFace(next)
+        switchFace(if (_state.value.face == KeyboardFace.FlickKana) KeyboardFace.FlickAlphabet else KeyboardFace.FlickKana)
     }
 
     private fun switchFace(face: KeyboardFace) {
         commitAll()
-        _state.update { it.copy(face = face, shifted = false) }
+        _state.update {
+            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shifted = false)
+        }
     }
 
     private fun startVoice() {
@@ -304,7 +319,7 @@ class KeyboardController(
             return
         }
         _state.update {
-            it.copy(panel = Panel.Voice, voice = VoiceUiState(VoiceStatus.Listening, onDevice = voice.isOnDevice))
+            it.copy(panel = Panel.Voice, voice = VoiceUiState(VoiceStatus.Listening))
         }
         voice.start(
             object : VoiceListener {
@@ -329,9 +344,6 @@ class KeyboardController(
             },
         )
     }
-
-    private fun defaultFace(): KeyboardFace =
-        if (_state.value.layout == KeyboardLayout.Flick) KeyboardFace.FlickKana else KeyboardFace.QwertyKana
 
     /** 未確定文字列があれば確定する。 */
     fun commitAll() {

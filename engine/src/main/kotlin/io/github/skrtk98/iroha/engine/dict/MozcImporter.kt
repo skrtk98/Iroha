@@ -71,9 +71,28 @@ class MozcImporter(private val dir: File) {
         /** 取得元の mozc リビジョン。辞書を更新するときはここを変える。 */
         const val MOZC_COMMIT = "0136c35782536cb43d710575c311cd4185982738"
 
-        val REQUIRED_FILES: List<String> =
-            listOf("id.def", "connection_single_column.txt", "evaluation.tsv") +
-                (0..9).map { "dictionary0$it.txt" }
+        /**
+         * 必要なファイルと SHA-256。取得した中身が変わっていないことを確かめ、
+         * 誰がビルドしても同じ辞書（ひいては同じ APK）になるようにする。
+         * [MOZC_COMMIT] を変えたら、取得し直したファイルの値に書き換えること。
+         */
+        val FILE_SHA256: Map<String, String> = mapOf(
+            "id.def" to "07a05a268c3783b7e02b36e4aa591555a2dd19a1f3c93891576740761c154f2d",
+            "connection_single_column.txt" to "68823a1f6617372ccb89afdbcb334d7a0bcfa82c9c5dda03fc1f80f1cab5c48e",
+            "evaluation.tsv" to "66e80417eef5790e4e5e8f76d97f8751966167f95d80e7e98087fd9b337bffd6",
+            "dictionary00.txt" to "9e07ce292932c4fff327ed8cb06274c09acca556bd8bdf7c7ef1f6173eae3b61",
+            "dictionary01.txt" to "836fd5fd8399510de0d8ef7b33be913cca6bbaee7b712cc8045fba03f4c75a89",
+            "dictionary02.txt" to "93943858d0cfd092b849a78def6901eaf228177e1ac5663544e865a3a1e45a9e",
+            "dictionary03.txt" to "cb9f1b0b4a7550d682d86244a021cd17e0b15366328819e69135b5f183a1a24b",
+            "dictionary04.txt" to "9fdc4e3948d03463de13ab5782adffbc11dd06e934cb80138c5920029cd3d2f6",
+            "dictionary05.txt" to "199e3b0f050b691823ae7ba943090d437f51af6436b27c5f3dc69cafa12000e4",
+            "dictionary06.txt" to "b95b14f7770ae2a824bc8e9fad8b03c1bc45c504f93a36554b8b56daa0368d2a",
+            "dictionary07.txt" to "7f53649b529d4c8c495d3a8dd9c4d489dfe7696080f7423107ff01331174be48",
+            "dictionary08.txt" to "50a31bb5fc1646721b00be371a5695dffab1292bda143e1e59cc70cbbdd8643f",
+            "dictionary09.txt" to "4e5fcd4cbfbf11395166a37b506f547fc54d20edc0884f5184ecd3fc705f0d9a",
+        )
+
+        val REQUIRED_FILES: List<String> = FILE_SHA256.keys.toList()
 
         fun rawUrl(fileName: String): String =
             "https://raw.githubusercontent.com/google/mozc/$MOZC_COMMIT/src/data/dictionary_oss/$fileName"

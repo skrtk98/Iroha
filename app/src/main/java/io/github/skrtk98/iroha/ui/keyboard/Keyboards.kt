@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,10 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.skrtk98.iroha.R
-import io.github.skrtk98.iroha.data.KeyboardLayout
 import io.github.skrtk98.iroha.ime.EnterKind
 import io.github.skrtk98.iroha.ime.KeyAction
 import io.github.skrtk98.iroha.ime.KeyboardFace
@@ -69,16 +67,17 @@ fun EnterKey(kind: EnterKind, composing: Boolean, onAction: (KeyAction) -> Unit,
 }
 
 /**
- * 12 キーのフリック配列。左右の列が機能キー、中央 3 列が文字キー。
+ * 12 キーのフリック配列。左右の列が機能キー、中央 3 列が文字キー。高さは [modifier] で決める。
+ * 配列やテンキーの切り替えはどの面でも使うのでツールバーに置き、ここには面ごとのキーだけを置く。
  */
 @Composable
 fun FlickKeyboard(
     face: KeyboardFace,
+    textFace: KeyboardFace,
     shifted: Boolean,
     composing: Boolean,
     enterKind: EnterKind,
     spaceKind: SpaceKind,
-    keyHeightDp: Int,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -89,37 +88,42 @@ fun FlickKeyboard(
     }
     var guide by remember { mutableStateOf<FlickGuide?>(null) }
     val root = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    val rowHeight = keyHeightDp.dp
     val onInput: (String) -> Unit = { onAction(KeyAction.Text(it)) }
     Box(modifier.onGloballyPositioned { root[0] = it }) {
-        Row(Modifier.fillMaxWidth().height(rowHeight * 4)) {
+        Row(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 IconKey(R.drawable.ic_keyboard_arrow_left, "左へ", { onAction(KeyAction.CursorLeft) }, Modifier.weight(1f).fillMaxWidth(), repeat = true)
                 IconKey(R.drawable.ic_keyboard_arrow_right, "右へ", { onAction(KeyAction.CursorRight) }, Modifier.weight(1f).fillMaxWidth(), repeat = true)
-                IconKey(
-                    R.drawable.ic_keyboard,
-                    "QWERTY に切り替え",
-                    { onAction(KeyAction.SwitchLayout(KeyboardLayout.Qwerty)) },
-                    Modifier.weight(1f).fillMaxWidth(),
-                )
-                val modeLabel = when (face) {
-                    KeyboardFace.FlickAlphabet -> "abc"
-                    KeyboardFace.FlickNumber -> "123"
-                    else -> "あいう"
+                // 日英 ⇔ 数字・記号のキーは、どちらの面でも 3 段目に置く
+                if (face == KeyboardFace.FlickNumber) {
+                    // 右列の確定キーと対になるよう 2 段分の高さにする
+                    TextKey(textFaceLabel(textFace), { onAction(KeyAction.ToggleSymbols) }, Modifier.weight(2f).fillMaxWidth(), KeyStyle.Function, 14.sp)
+                } else {
+                    TextKey("☆123", { onAction(KeyAction.ToggleSymbols) }, Modifier.weight(1f).fillMaxWidth(), KeyStyle.Function, 14.sp)
+                    TextKey(
+                        if (face == KeyboardFace.FlickAlphabet) "abc" else "あいう",
+                        { onAction(KeyAction.CycleMode) },
+                        Modifier.weight(1f).fillMaxWidth(),
+                        KeyStyle.Function,
+                        14.sp,
+                    )
                 }
-                TextKey(modeLabel, { onAction(KeyAction.CycleMode) }, Modifier.weight(1f).fillMaxWidth(), KeyStyle.Function, 14.sp)
             }
             Column(Modifier.weight(3f).fillMaxHeight()) {
                 for (row in 0 until 4) {
                     Row(Modifier.weight(1f).fillMaxWidth()) {
                         for (col in 0 until 3) {
                             val cellModifier = Modifier.weight(1f).fillMaxHeight()
-                            if (row == 3 && col == 0) {
+                            val key = when {
+                                row == 3 && col == 0 && face == KeyboardFace.FlickNumber -> KeyLayouts.flickNumberBrackets
+                                row == 3 && col == 0 -> null
+                                else -> keys[row * 3 + col - if (row == 3) 1 else 0]
+                            }
+                            if (key == null) {
                                 ModifierKey(face, shifted, onAction, cellModifier)
                             } else {
-                                val index = row * 3 + col - if (row == 3) 1 else 0
                                 FlickKeyButton(
-                                    key = keys[index],
+                                    key = key,
                                     onInput = onInput,
                                     onGuide = { guide = it },
                                     rootCoordinates = { root[0] },
@@ -151,23 +155,26 @@ private fun ModifierKey(face: KeyboardFace, shifted: Boolean, onAction: (KeyActi
             if (shifted) KeyStyle.Accent else KeyStyle.Character,
             15.sp,
         )
-        else -> TextKey("( )", { onAction(KeyAction.Text("()")) }, modifier, fontSize = 15.sp)
+        else -> Unit
     }
 }
 
-/** QWERTY 配列。かな面ではローマ字入力になる。 */
+/** 数字の段の高さ。英字の段 1 段を 1 とした比。 */
+const val QwertyNumberRowWeight = 0.8f
+
+/** QWERTY 配列。かな面ではローマ字入力になる。[numberRow] なら日英の面で英字の上に数字の段を出す。 */
 @Composable
 fun QwertyKeyboard(
     face: KeyboardFace,
+    textFace: KeyboardFace,
     shifted: Boolean,
     composing: Boolean,
     enterKind: EnterKind,
     spaceKind: SpaceKind,
-    keyHeightDp: Int,
+    numberRow: Boolean,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val rowModifier = Modifier.fillMaxWidth().height(keyHeightDp.dp)
     val symbols = face == KeyboardFace.QwertySymbols
     val rows: List<List<String>> = if (symbols) {
         KeyLayouts.symbolRows
@@ -175,11 +182,15 @@ fun QwertyKeyboard(
         KeyLayouts.qwertyRows.map { row -> row.map { if (shifted) it.uppercaseChar().toString() else it.toString() } }
     }
     Column(modifier) {
+        val rowModifier = Modifier.fillMaxWidth().weight(1f)
+        if (numberRow && !symbols) {
+            Row(Modifier.fillMaxWidth().weight(QwertyNumberRowWeight)) { CharacterKeys(KeyLayouts.symbolRows[0], onAction) }
+        }
         Row(rowModifier) { CharacterKeys(rows[0], onAction) }
         Row(rowModifier) {
             Spacer(Modifier.weight(0.5f))
             CharacterKeys(rows[1], onAction)
-            Spacer(Modifier.weight(if (symbols) 0.5f else 0.5f))
+            Spacer(Modifier.weight(0.5f))
         }
         Row(rowModifier) {
             if (symbols) {
@@ -198,26 +209,22 @@ fun QwertyKeyboard(
         }
         Row(rowModifier) {
             TextKey(
-                if (symbols) "ABC" else "?123",
+                if (symbols) textFaceLabel(textFace) else "?123",
                 { onAction(KeyAction.ToggleSymbols) },
                 Modifier.weight(1.5f).fillMaxHeight(),
                 KeyStyle.Function,
                 14.sp,
             )
-            TextKey(
-                if (face == KeyboardFace.QwertyKana) "あ" else "A",
-                { onAction(KeyAction.ToggleKanaAlphabet) },
-                Modifier.weight(1f).fillMaxHeight(),
-                KeyStyle.Function,
-                16.sp,
-            )
-            IconKey(
-                R.drawable.ic_dialpad,
-                "フリックに切り替え",
-                { onAction(KeyAction.SwitchLayout(KeyboardLayout.Flick)) },
-                Modifier.weight(1f).fillMaxHeight(),
-            )
-            SpaceKey(spaceKind, onAction, Modifier.weight(3.5f).fillMaxHeight())
+            if (!symbols) {
+                TextKey(
+                    if (face == KeyboardFace.QwertyKana) "あ" else "A",
+                    { onAction(KeyAction.ToggleKanaAlphabet) },
+                    Modifier.weight(1f).fillMaxHeight(),
+                    KeyStyle.Function,
+                    16.sp,
+                )
+            }
+            SpaceKey(spaceKind, onAction, Modifier.weight(if (symbols) 5.5f else 4.5f).fillMaxHeight())
             val punctuation = if (face == KeyboardFace.QwertyKana) listOf("ー", "、", "。") else listOf("-", ",", ".")
             for (p in punctuation) {
                 TextKey(p, { onAction(KeyAction.Text(p)) }, Modifier.weight(0.9f).fillMaxHeight())
@@ -234,41 +241,9 @@ private fun RowScope.CharacterKeys(keys: List<String>, onAction: (KeyAction) -> 
     }
 }
 
-/** 数値入力欄向けのテンキー。 */
-@Composable
-fun NumberPad(
-    enterKind: EnterKind,
-    keyHeightDp: Int,
-    onAction: (KeyAction) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val rows = listOf(
-        listOf("1", "2", "3", "-"),
-        listOf("4", "5", "6", "+"),
-        listOf("7", "8", "9", ","),
-        listOf("*", "0", ".", "/"),
-    )
-    Row(modifier.fillMaxWidth().height(keyHeightDp.dp * 4)) {
-        Column(Modifier.weight(4f).fillMaxHeight()) {
-            for (row in rows) {
-                Row(Modifier.weight(1f).fillMaxWidth()) {
-                    for ((i, key) in row.withIndex()) {
-                        TextKey(
-                            key,
-                            { onAction(KeyAction.Text(key)) },
-                            Modifier.weight(1f).fillMaxHeight(),
-                            style = if (i == 3 || key == "*" || key == ".") KeyStyle.Function else KeyStyle.Character,
-                            fontSize = 24.sp,
-                        )
-                    }
-                }
-            }
-        }
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            BackspaceKey(onAction, Modifier.weight(1f).fillMaxWidth())
-            IconKey(R.drawable.ic_space_bar, "空白", { onAction(KeyAction.Space) }, Modifier.weight(1f).fillMaxWidth())
-            TextKey("あA", { onAction(KeyAction.ToggleNumberPad) }, Modifier.weight(1f).fillMaxWidth(), KeyStyle.Function, 15.sp)
-            EnterKey(enterKind, composing = false, onAction = onAction, modifier = Modifier.weight(1f).fillMaxWidth())
-        }
-    }
+/** 数字・記号の面から日英に戻るキーのラベル。戻り先の面を表す。 */
+private fun textFaceLabel(textFace: KeyboardFace) = when (textFace) {
+    KeyboardFace.FlickAlphabet -> "abc"
+    KeyboardFace.QwertyAlphabet -> "ABC"
+    else -> "あいう"
 }

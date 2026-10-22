@@ -4,6 +4,7 @@
     <!-- 音声入力だけで使う。インターネット権限は持たない。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- 端末内認識が使えるかを調べるため、認識サービスを見えるようにする（通信の権限ではない） -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
