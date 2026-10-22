@@ -57,8 +57,8 @@ class ClipboardRepository(
     private var importCount = 0L
     private var importsInFlight = 0
 
-    /** 保存を終えて、まだ履歴に加えていない画像のファイル名。 */
-    private val pendingImages: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    /** 保存を終えて、まだ履歴に加えていない画像のファイル名と件数。同じ画像の読み込みが重なることがある。 */
+    private val pendingImages = ConcurrentHashMap<String, Int>()
     private var loaded = false
 
     /** 初回だけファイルから読む。小さいファイルなのでメインスレッドで読む。 */
@@ -147,7 +147,7 @@ class ClipboardRepository(
     /** [names] の画像のうち、履歴にも保存中の画像にも無いものを消す。[saveMutex] を持って呼ぶ。 */
     private fun deleteUnusedImages(names: Set<String>) {
         // 消した後に同じ画像がコピーし直されていれば、そのファイルは残す
-        val inUse = _entries.value.mapNotNullTo(HashSet()) { it.image } + pendingImages
+        val inUse = _entries.value.mapNotNullTo(HashSet()) { it.image } + pendingImages.keys
         for (name in names - inUse) imageFile(context, name).delete()
     }
 
@@ -186,7 +186,7 @@ class ClipboardRepository(
             temp.writeBytes(bytes)
             check(temp.renameTo(target))
             // 履歴に加えるまでの間に、古い削除の後始末で消されないようにする
-            pendingImages += name
+            pendingImages.merge(name, 1, Int::plus)
         }
         return name
     }
@@ -199,7 +199,7 @@ class ClipboardRepository(
             history.add(ClipEntry("", time = time, image = name))
             publish()
         }
-        pendingImages -= name
+        pendingImages.computeIfPresent(name) { _, count -> if (count > 1) count - 1 else null }
         // 加えなかった画像や、遅れて届いて件数の上限ですぐに外れた画像は残さない
         if (history.entries.none { it.image == name }) {
             appScope.launch(Dispatchers.IO) { saveMutex.withLock { deleteUnusedImages(setOf(name)) } }
