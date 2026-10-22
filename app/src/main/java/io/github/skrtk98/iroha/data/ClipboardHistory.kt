@@ -41,11 +41,7 @@ class ClipboardHistory(
         val entry = clip.copy(pinned = existing?.pinned ?: false, time = maxOf(clip.time, existing?.time ?: clip.time))
         val rest = entries.filterNot { it.key == clip.key }
         val index = rest.indexOfFirst { it.time <= entry.time }.let { if (it < 0) rest.size else it }
-        var unpinned = 0
-        var unpinnedImages = 0
-        entries = (rest.take(index) + entry + rest.drop(index)).filter {
-            it.pinned || (++unpinned <= maxUnpinned && (it.image == null || ++unpinnedImages <= maxImages))
-        }
+        entries = trim(rest.take(index) + entry + rest.drop(index))
     }
 
     /** 固定数（画像は画像の固定数）が上限に達しているときは新たに固定しない。固定の解除はいつでもできる。 */
@@ -53,7 +49,17 @@ class ClipboardHistory(
         val target = entries.firstOrNull { it.key == key } ?: return
         if (!target.pinned && entries.count { it.pinned } >= maxPinned) return
         if (!target.pinned && target.image != null && entries.count { it.pinned && it.image != null } >= maxImages) return
-        entries = entries.map { if (it.key == key) it.copy(pinned = !it.pinned) else it }
+        // 固定を外すと固定していない項目が増えるので、上限を超えた古いものを外す
+        entries = trim(entries.map { if (it.key == key) it.copy(pinned = !it.pinned) else it })
+    }
+
+    /** 固定していない項目（うち画像）が上限を超えないよう、古いほうから外す。 */
+    private fun trim(list: List<ClipEntry>): List<ClipEntry> {
+        var unpinned = 0
+        var unpinnedImages = 0
+        return list.filter {
+            it.pinned || (++unpinned <= maxUnpinned && (it.image == null || ++unpinnedImages <= maxImages))
+        }
     }
 
     fun remove(key: String) {
