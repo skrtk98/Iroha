@@ -186,7 +186,7 @@ private fun ShiftKey(shift: ShiftState, onAction: (KeyAction) -> Unit, modifier:
 }
 
 /** 数字の段の高さ。英字の段 1 段を 1 とした比。 */
-const val QwertyNumberRowWeight = 0.8f
+private const val QwertyNumberRowWeight = 0.8f
 
 /** QWERTY 配列。かな面ではローマ字入力になる。[numberRow] なら日英の面で英字の上に数字の段を出す。 */
 @Composable
