@@ -12,8 +12,8 @@ import io.github.skrtk98.iroha.ime.CursorCommand
 import io.github.skrtk98.iroha.ime.KeyAction
 
 /**
- * カーソルモード。方向キーでカーソルを動かし、選択をオンにすると選択範囲を伸ばす。
- * 右の列は選択範囲への操作。
+ * カーソルモード。上の 3 段が方向キーで、選択をオンにすると選択範囲を伸ばす。
+ * 最下段は選択範囲への操作。
  */
 @Composable
 fun CursorPanel(
@@ -23,37 +23,34 @@ fun CursorPanel(
 ) {
     fun send(command: CursorCommand) = onAction(KeyAction.Cursor(command))
     val cell = Modifier.fillMaxHeight()
-    Row(modifier) {
-        Column(Modifier.weight(3f).fillMaxHeight()) {
-            Row(Modifier.weight(1f)) {
-                IconKey(R.drawable.ic_first_page, "行頭へ", { send(CursorCommand.LineStart) }, cell.weight(1f))
-                IconKey(R.drawable.ic_keyboard_arrow_up, "上へ", { send(CursorCommand.Up) }, cell.weight(1f), KeyStyle.Character, repeat = true)
-                IconKey(R.drawable.ic_last_page, "行末へ", { send(CursorCommand.LineEnd) }, cell.weight(1f))
-            }
-            Row(Modifier.weight(1f)) {
-                IconKey(R.drawable.ic_keyboard_arrow_left, "左へ", { send(CursorCommand.Left) }, cell.weight(1f), KeyStyle.Character, repeat = true)
-                IconKey(
-                    R.drawable.ic_text_cursor,
-                    if (selecting) "選択中" else "選択",
-                    { send(CursorCommand.ToggleSelection) },
-                    cell.weight(1f),
-                    if (selecting) KeyStyle.Accent else KeyStyle.Function,
-                )
-                IconKey(R.drawable.ic_keyboard_arrow_right, "右へ", { send(CursorCommand.Right) }, cell.weight(1f), KeyStyle.Character, repeat = true)
-            }
-            // キーボードへは上部のカーソル移動ボタンで戻る
-            Row(Modifier.weight(1f)) {
-                BackspaceKey(onAction, cell.weight(1f))
-                IconKey(R.drawable.ic_keyboard_arrow_down, "下へ", { send(CursorCommand.Down) }, cell.weight(1f), KeyStyle.Character, repeat = true)
-                Spacer(Modifier.weight(1f))
-            }
+    // キーボードへは上部のカーソル移動ボタンで戻る
+    Column(modifier) {
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            Spacer(cell.weight(1f))
+            IconKey(R.drawable.ic_keyboard_arrow_up, "上へ", { send(CursorCommand.Up) }, cell.weight(1f), KeyStyle.Character, repeat = true)
+            BackspaceKey(onAction, cell.weight(1f))
         }
-        Column(Modifier.weight(1.3f).fillMaxHeight()) {
-            val side = Modifier.weight(1f).fillMaxWidth()
-            IconKey(R.drawable.ic_select_all, "すべて選択", { send(CursorCommand.SelectAll) }, side)
-            IconKey(R.drawable.ic_content_copy, "コピー", { send(CursorCommand.Copy) }, side)
-            IconKey(R.drawable.ic_content_cut, "切り取り", { send(CursorCommand.Cut) }, side)
-            IconKey(R.drawable.ic_paste_into, "貼り付け", { send(CursorCommand.Paste) }, side)
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            IconKey(R.drawable.ic_keyboard_arrow_left, "左へ", { send(CursorCommand.Left) }, cell.weight(1f), KeyStyle.Character, repeat = true)
+            IconKey(
+                R.drawable.ic_text_cursor,
+                if (selecting) "選択中" else "選択",
+                { send(CursorCommand.ToggleSelection) },
+                cell.weight(1f),
+                if (selecting) KeyStyle.Accent else KeyStyle.Function,
+            )
+            IconKey(R.drawable.ic_keyboard_arrow_right, "右へ", { send(CursorCommand.Right) }, cell.weight(1f), KeyStyle.Character, repeat = true)
+        }
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            IconKey(R.drawable.ic_first_page, "行頭へ", { send(CursorCommand.LineStart) }, cell.weight(1f))
+            IconKey(R.drawable.ic_keyboard_arrow_down, "下へ", { send(CursorCommand.Down) }, cell.weight(1f), KeyStyle.Character, repeat = true)
+            IconKey(R.drawable.ic_last_page, "行末へ", { send(CursorCommand.LineEnd) }, cell.weight(1f))
+        }
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            IconKey(R.drawable.ic_select_all, "すべて選択", { send(CursorCommand.SelectAll) }, cell.weight(1f))
+            IconKey(R.drawable.ic_content_copy, "コピー", { send(CursorCommand.Copy) }, cell.weight(1f))
+            IconKey(R.drawable.ic_content_cut, "切り取り", { send(CursorCommand.Cut) }, cell.weight(1f))
+            IconKey(R.drawable.ic_paste_into, "貼り付け", { send(CursorCommand.Paste) }, cell.weight(1f))
         }
     }
 }
