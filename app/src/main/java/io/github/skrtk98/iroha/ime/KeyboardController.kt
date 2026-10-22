@@ -57,7 +57,7 @@ class KeyboardController(
     /** エディタに未確定文字列を表示しているか。 */
     private var hasPreedit = false
 
-    /** 直接入力（英字・数字・パスワード欄など）で変換を使わない。 */
+    /** 数字・パスワードの欄。日本語の面でも変換を使わず、打った文字をそのまま入れる。 */
     private var directInput = false
 
     init {
@@ -85,17 +85,12 @@ class KeyboardController(
         // restarting でも別の欄に移っていることがある（Compose の同一ビュー内のフォーカス移動など）ので必ず捨てる
         resetComposition()
         val inputType = info?.inputType ?: 0
-        val inputClass = inputType and InputType.TYPE_MASK_CLASS
-        val variation = inputType and InputType.TYPE_MASK_VARIATION
-        val layout = settings.defaultLayout
-        val isNumeric = inputClass == InputType.TYPE_CLASS_NUMBER ||
-            inputClass == InputType.TYPE_CLASS_PHONE ||
-            inputClass == InputType.TYPE_CLASS_DATETIME
-        val isAscii = inputClass == InputType.TYPE_CLASS_TEXT && variation in ASCII_VARIATIONS
-        val textFace = Faces.text(layout, alphabet = isAscii)
+        val isNumeric = InputFields.isNumeric(inputType)
+        val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType))
         // 数値欄は数字の打ちやすいテンキー（フリック）にする
         val face = if (isNumeric) KeyboardFace.FlickNumber else textFace
-        directInput = isNumeric || isAscii
+        // それ以外の欄は、日本語の面に切り替えればローマ字・かなを変換する
+        directInput = isNumeric || InputFields.isPassword(inputType)
         _state.update {
             it.copy(
                 face = face,
@@ -434,16 +429,5 @@ class KeyboardController(
             EditorInfo.IME_ACTION_DONE -> EnterKind.Done
             else -> EnterKind.Newline
         }
-    }
-
-    private companion object {
-        val ASCII_VARIATIONS = setOf(
-            InputType.TYPE_TEXT_VARIATION_PASSWORD,
-            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
-            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
-            InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
-            InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
-            InputType.TYPE_TEXT_VARIATION_URI,
-        )
     }
 }
