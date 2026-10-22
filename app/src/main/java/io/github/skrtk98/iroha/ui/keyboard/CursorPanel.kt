@@ -50,7 +50,7 @@ fun CursorPanel(
             IconKey(R.drawable.ic_select_all, "すべて選択", { send(CursorCommand.SelectAll) }, cell.weight(1f))
             IconKey(R.drawable.ic_content_copy, "コピー", { send(CursorCommand.Copy) }, cell.weight(1f))
             IconKey(R.drawable.ic_content_cut, "切り取り", { send(CursorCommand.Cut) }, cell.weight(1f))
-            IconKey(R.drawable.ic_paste_into, "貼り付け", { send(CursorCommand.Paste) }, cell.weight(1f))
+            IconKey(R.drawable.ic_paste_text, "貼り付け", { send(CursorCommand.Paste) }, cell.weight(1f))
         }
     }
 }
