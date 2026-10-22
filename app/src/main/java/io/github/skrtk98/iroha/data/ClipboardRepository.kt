@@ -3,10 +3,13 @@ package io.github.skrtk98.iroha.data
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.PersistableBundle
 import android.util.Log
+import android.webkit.MimeTypeMap
 import androidx.annotation.MainThread
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,11 +18,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
+import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * クリップボード履歴を端末内だけに保存する。変更はメインスレッドから行い、保存はバックグラウンドで行う。
  * パスワードなど機密扱いのクリップは記録しない。
+ *
+ * 画像はコピー元の URI がクリップボードの変更で読めなくなるため、中身を [imageDir] に複製して持つ。
+ * ファイル名は中身のハッシュなので、同じ画像を何度コピーしても 1 件になる。
  */
 class ClipboardRepository(
     private val context: Context,
@@ -32,6 +43,26 @@ class ClipboardRepository(
 
     private val file get() = File(context.noBackupFilesDir, "clipboard.tsv")
     private val saveMutex = Mutex()
+
+    /** 履歴を公開した回数（メインスレッドで数える）と、ファイルに書けた最新の回。後者は [saveMutex] の中で触る。 */
+    private var publishCount = 0L
+    private var savedVersion = 0L
+
+    /** 履歴を消去した回数。消去より前にコピーし、読み込み中だった画像を加えないために使う。メインスレッドだけで触る。 */
+    private var clearCount = 0
+
+    /**
+     * 個別に消した画像と、消した時点の [importCount]。それより前にコピーし、読み込み中だった同じ画像を
+     * 加えないために使う。読み込み中の画像が無くなったら空にする。以下はどれもメインスレッドだけで触る。
+     */
+    private val removedImages = HashMap<String, Long>()
+
+    /** 画像の読み込みを始めた回数。コピーと削除の前後を、時計に頼らず決めるための通し番号。 */
+    private var importCount = 0L
+    private var importsInFlight = 0
+
+    /** 保存を終えて、まだ履歴に加えていない画像のファイル名と件数。同じ画像の読み込みが重なることがある。 */
+    private val pendingImages = ConcurrentHashMap<String, Int>()
     private var loaded = false
 
     /** 初回だけファイルから読む。小さいファイルなのでメインスレッドで読む。 */
@@ -48,23 +79,50 @@ class ClipboardRepository(
     fun onPrimaryClipChanged(clip: ClipData?) {
         if (!settings.clipboardHistory || clip == null || clip.itemCount == 0) return
         if (isSensitive(clip.description)) return
-        val text = clip.getItemAt(0).coerceToText(context)?.toString() ?: return
         ensureLoaded()
+        val item = clip.getItemAt(0)
+        val uri = item.uri
+        if (uri != null && isImage(clip.description)) {
+            saveImage(uri)
+            return
+        }
+        val text = item.coerceToText(context)?.toString() ?: return
         history.add(text.take(MAX_TEXT_LENGTH), System.currentTimeMillis())
         publish()
     }
 
     @MainThread
-    fun togglePin(text: String) = mutate { history.togglePin(text) }
+    fun togglePin(key: String) = mutate { history.togglePin(key) }
 
     @MainThread
-    fun remove(text: String) = mutate { history.remove(text) }
+    fun remove(key: String) = mutate {
+        // 読み込み中の画像があるときだけ、同じ画像が戻らないよう消した時刻を覚える
+        if (importsInFlight > 0) {
+            history.entries.firstOrNull { it.key == key }?.image?.let { removedImages[it] = importCount }
+        }
+        history.remove(key)
+    }
 
     @MainThread
-    fun clearUnpinned() = mutate { history.clearUnpinned() }
+    fun clearUnpinned() = mutate {
+        clearCount++
+        history.clearUnpinned()
+    }
 
     @MainThread
-    fun clearAll() = mutate { history.clearAll() }
+    fun clearAll() = mutate {
+        clearCount++
+        history.clearAll()
+    }
+
+    /** 他のアプリに渡すための、画像の項目の URI と MIME タイプ。 */
+    fun imageContent(entry: ClipEntry): Pair<Uri, String>? {
+        val name = entry.image ?: return null
+        val file = imageFile(context, name)
+        if (!file.exists()) return null
+        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension) ?: return null
+        return FileProvider.getUriForFile(context, context.packageName + PROVIDER_SUFFIX, file) to mimeType
+    }
 
     private fun mutate(block: () -> Unit) {
         ensureLoaded()
@@ -72,19 +130,109 @@ class ClipboardRepository(
         publish()
     }
 
+    /** 履歴から外れた画像のファイルを消し、履歴を保存する。 */
     private fun publish() {
+        val removed = _entries.value.mapNotNullTo(HashSet()) { it.image } - history.entries.mapNotNullTo(HashSet()) { it.image }
         _entries.value = history.entries
         val snapshot = history.serialize()
+        val version = ++publishCount
         appScope.launch(Dispatchers.IO) {
             saveMutex.withLock {
-                runCatching {
-                    val temp = File(file.parentFile, file.name + ".tmp")
-                    temp.writeText(snapshot)
-                    check(temp.renameTo(file))
-                }.onFailure { Log.w(TAG, "failed to save clipboard history", it) }
+                // 保存の順は前後しうるので、新しい履歴を書いた後に古い履歴で上書きしない
+                if (version > savedVersion) {
+                    runCatching {
+                        val temp = File(file.parentFile, file.name + ".tmp")
+                        temp.writeText(snapshot)
+                        check(temp.renameTo(file))
+                        savedVersion = version
+                    }.onFailure { Log.w(TAG, "failed to save clipboard history", it) }
+                }
+                // 保存に失敗したら、ファイルに残る古い履歴が指す画像を消さない
+                if (savedVersion >= version) deleteUnusedImages(removed)
             }
         }
     }
+
+    /** [names] の画像のうち、履歴にも保存中の画像にも無いものを消す。[saveMutex] を持って呼ぶ。 */
+    private fun deleteUnusedImages(names: Set<String>) {
+        // 消した後に同じ画像がコピーし直されていれば、そのファイルは残す
+        val inUse = _entries.value.mapNotNullTo(HashSet()) { it.image } + pendingImages.keys
+        for (name in names - inUse) imageFile(context, name).delete()
+    }
+
+    /** コピー元から画像を読んで保存し、保存できたら履歴に加える。 */
+    private fun saveImage(uri: Uri) {
+        val time = System.currentTimeMillis()
+        val clearsAtCopy = clearCount
+        val order = ++importCount
+        importsInFlight++
+        // 読む許可はクリップボードが変わると取り消されるので、すぐに開く。提供元が遅いこともあるため、
+        // メインスレッドでは開かない。開いたものは許可が取り消されても読み続けられる
+        appScope.launch(Dispatchers.IO) {
+            val name = runCatching { context.contentResolver.openInputStream(uri)?.let { storeImage(it) } }
+                .onFailure { Log.w(TAG, "failed to save clipboard image", it) }
+                .getOrNull()
+            withContext(Dispatchers.Main) {
+                importsInFlight--
+                if (name != null) addImportedImage(name, time, order, clearsAtCopy)
+                // 読み込み中の画像が無くなれば、消した画像の記録はもう要らない
+                if (importsInFlight == 0) removedImages.clear()
+            }
+        }
+    }
+
+    /** 画像を読み、中身のハッシュの名前で保存する。扱えない形式や大きすぎる画像なら null。 */
+    private suspend fun storeImage(input: InputStream): String? {
+        val bytes = input.use { it.readAtMost(MAX_IMAGE_BYTES) } ?: return null
+        // 宣言された型は image/* のように曖昧なことがあるので、形式は中身から決める
+        val extension = imageExtension(bytes) ?: return null
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val name = "${hash.take(32)}.$extension"
+        saveMutex.withLock {
+            val target = imageFile(context, name)
+            target.parentFile?.mkdirs()
+            val temp = File(target.parentFile, "$name.tmp")
+            temp.writeBytes(bytes)
+            check(temp.renameTo(target))
+            // 履歴に加えるまでの間に、古い削除の後始末で消されないようにする
+            pendingImages.merge(name, 1, Int::plus)
+        }
+        return name
+    }
+
+    @MainThread
+    private fun addImportedImage(name: String, time: Long, order: Long, clearsAtCopy: Int) {
+        // 読み込み中に履歴や同じ画像が消されたり、記録が止められたりしたら加えない
+        val removedAfterCopy = (removedImages[name] ?: -1L) >= order
+        if (clearCount == clearsAtCopy && !removedAfterCopy && settings.clipboardHistory) {
+            history.add(ClipEntry("", time = time, image = name))
+            publish()
+        }
+        pendingImages.computeIfPresent(name) { _, count -> if (count > 1) count - 1 else null }
+        // 加えなかった画像や、遅れて届いて件数の上限ですぐに外れた画像は残さない
+        if (history.entries.none { it.image == name }) {
+            appScope.launch(Dispatchers.IO) { saveMutex.withLock { deleteUnusedImages(setOf(name)) } }
+        }
+    }
+
+    /** 最後まで読み、[limit] バイトを超えたら null。 */
+    private fun InputStream.readAtMost(limit: Int): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        while (true) {
+            val n = read(buffer)
+            if (n < 0) return out.toByteArray()
+            if (out.size() + n > limit) return null
+            out.write(buffer, 0, n)
+        }
+    }
+
+    /**
+     * クリップが画像を宣言しているか。ClipData.newUri はコピーする側で提供元の型を宣言に含めるので、
+     * ここで提供元に問い合わせ直さない（メインスレッドから他のアプリを待つことになる）。形式は読んでから確かめる。
+     */
+    private fun isImage(description: ClipDescription): Boolean =
+        (0 until description.mimeTypeCount).any { description.getMimeType(it).startsWith("image/") }
 
     private fun isSensitive(description: ClipDescription?): Boolean {
         val extras: PersistableBundle = description?.extras ?: return false
@@ -96,8 +244,29 @@ class ClipboardRepository(
         return extras.getBoolean(key, false)
     }
 
-    private companion object {
-        const val TAG = "ClipboardRepository"
-        const val MAX_TEXT_LENGTH = 10_000
+    companion object {
+        private const val TAG = "ClipboardRepository"
+        private const val MAX_TEXT_LENGTH = 10_000
+        private const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
+        private const val IMAGE_DIR = "clips"
+
+        /** AndroidManifest の FileProvider の authority は、パッケージ名にこれを付けたもの。 */
+        private const val PROVIDER_SUFFIX = ".clips"
+
+        /** 画像の項目のファイル。FileProvider の files-path と同じ場所に置く。 */
+        fun imageFile(context: Context, name: String) = File(File(context.filesDir, IMAGE_DIR), name)
+    }
+}
+
+/** 貼り付け先で扱いやすい PNG・JPEG・GIF・WebP なら、先頭のバイトから決めた拡張子。 */
+internal fun imageExtension(bytes: ByteArray): String? {
+    fun startsWith(offset: Int, vararg signature: Int) =
+        bytes.size >= offset + signature.size && signature.indices.all { bytes[offset + it] == signature[it].toByte() }
+    return when {
+        startsWith(0, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) -> "png"
+        startsWith(0, 0xFF, 0xD8, 0xFF) -> "jpg"
+        startsWith(0, 0x47, 0x49, 0x46, 0x38) -> "gif"
+        startsWith(0, 0x52, 0x49, 0x46, 0x46) && startsWith(8, 0x57, 0x45, 0x42, 0x50) -> "webp"
+        else -> null
     }
 }

@@ -25,9 +25,6 @@ object Faces {
         KeyboardLayout.Qwerty -> KeyboardFace.QwertySymbols
     }
 
-    /** 同じ種類（日英なら かな・英字の別も）を保ったまま、もう一方の配列にした面。 */
-    fun otherLayout(face: KeyboardFace): KeyboardFace {
-        val other = if (layoutOf(face) == KeyboardLayout.Flick) KeyboardLayout.Qwerty else KeyboardLayout.Flick
-        return if (isSymbol(face)) symbol(other) else text(other, isAlphabet(face))
-    }
+    /** 日英の面 [textFace] と同じ配列で、かな ⇔ 英字を入れ替えた面。 */
+    fun otherLanguage(textFace: KeyboardFace): KeyboardFace = text(layoutOf(textFace), alphabet = !isAlphabet(textFace))
 }

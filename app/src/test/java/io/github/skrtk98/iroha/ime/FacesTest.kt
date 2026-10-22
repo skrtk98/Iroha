@@ -16,16 +16,16 @@ class FacesTest {
     }
 
     @Test
-    fun otherLayoutKeepsTheKindOfFace() {
-        assertEquals(KeyboardFace.QwertyKana, Faces.otherLayout(KeyboardFace.FlickKana))
-        assertEquals(KeyboardFace.FlickAlphabet, Faces.otherLayout(KeyboardFace.QwertyAlphabet))
-        assertEquals(KeyboardFace.QwertySymbols, Faces.otherLayout(KeyboardFace.FlickNumber))
-        assertEquals(KeyboardFace.FlickNumber, Faces.otherLayout(KeyboardFace.QwertySymbols))
-    }
-
-    @Test
     fun textFaceSelectsAlphabetOrKana() {
         assertEquals(KeyboardFace.FlickAlphabet, Faces.text(KeyboardLayout.Flick, alphabet = true))
         assertEquals(KeyboardFace.QwertyKana, Faces.text(KeyboardLayout.Qwerty, alphabet = false))
+    }
+
+    @Test
+    fun otherLanguageKeepsTheLayout() {
+        assertEquals(KeyboardFace.FlickAlphabet, Faces.otherLanguage(KeyboardFace.FlickKana))
+        assertEquals(KeyboardFace.FlickKana, Faces.otherLanguage(KeyboardFace.FlickAlphabet))
+        assertEquals(KeyboardFace.QwertyAlphabet, Faces.otherLanguage(KeyboardFace.QwertyKana))
+        assertEquals(KeyboardFace.QwertyKana, Faces.otherLanguage(KeyboardFace.QwertyAlphabet))
     }
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- クリップボード履歴の画像だけを、貼り付け先のアプリに一時的に読ませる -->
+<paths>
+    <files-path name="clips" path="clips/" />
+</paths>

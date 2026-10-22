@@ -1,5 +1,7 @@
 package io.github.skrtk98.iroha.ime
 
+import io.github.skrtk98.iroha.data.ClipEntry
+
 /** キーボードから IME への操作。 */
 sealed interface KeyAction {
     /** 文字の入力。かな入力モードでは未確定文字列に、それ以外では直接エディタに入る。 */
@@ -14,20 +16,17 @@ sealed interface KeyAction {
     /** 濁点・半濁点・小書きの切り替え。 */
     data object ToggleModifier : KeyAction
 
-    /** 英字の大文字・小文字切り替え。 */
+    /** シフトのタップ。オフなら次の 1 文字だけ大文字にし、オンなら解除する。 */
     data object Shift : KeyAction
 
-    /** フリックのかな ⇔ 英字。 */
-    data object CycleMode : KeyAction
+    /** シフトの長押し。解除するまで大文字にする。 */
+    data object LockShift : KeyAction
 
-    /** QWERTY のかな ⇔ 英字。 */
+    /** 日本語 ⇔ 英字。配列はそのままで、数字・記号の面からは切り替えた日英の面に戻る。 */
     data object ToggleKanaAlphabet : KeyAction
 
     /** 日英 ⇔ 数字・記号。それぞれ設定した配列の面に切り替える。 */
     data object ToggleSymbols : KeyAction
-
-    /** 表示中の種類（日英か数字・記号か）の配列をフリック ⇔ QWERTY で切り替え、設定にも保存する。 */
-    data object ToggleLayout : KeyAction
 
     data class SelectCandidate(val index: Int) : KeyAction
     data object ToggleCandidateList : KeyAction
@@ -42,9 +41,11 @@ sealed interface KeyAction {
     /** カーソルモードの操作。 */
     data class Cursor(val command: CursorCommand) : KeyAction
 
-    data class PasteClip(val text: String) : KeyAction
-    data class TogglePinClip(val text: String) : KeyAction
-    data class DeleteClip(val text: String) : KeyAction
+    data class PasteClip(val clip: ClipEntry) : KeyAction
+
+    /** クリップボード履歴の項目を、[ClipEntry.key] で指す。 */
+    data class TogglePinClip(val key: String) : KeyAction
+    data class DeleteClip(val key: String) : KeyAction
     data object ClearClips : KeyAction
 
     data object StartVoice : KeyAction
