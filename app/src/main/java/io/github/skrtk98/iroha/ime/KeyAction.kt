@@ -17,10 +17,7 @@ sealed interface KeyAction {
     /** 英字の大文字・小文字切り替え。 */
     data object Shift : KeyAction
 
-    /** フリックのかな ⇔ 英字。 */
-    data object CycleMode : KeyAction
-
-    /** QWERTY のかな ⇔ 英字。 */
+    /** 日本語 ⇔ 英字。配列はそのままで、数字・記号の面からは切り替えた日英の面に戻る。 */
     data object ToggleKanaAlphabet : KeyAction
 
     /** 日英 ⇔ 数字・記号。それぞれ設定した配列の面に切り替える。 */

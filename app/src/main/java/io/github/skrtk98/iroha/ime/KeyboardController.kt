@@ -145,10 +145,7 @@ class KeyboardController(
             KeyAction.CursorRight -> moveCursor(1)
             KeyAction.ToggleModifier -> if (session?.toggleModifier() == true) render()
             KeyAction.Shift -> _state.update { it.copy(shifted = !it.shifted) }
-            KeyAction.CycleMode -> cycleFlickMode()
-            KeyAction.ToggleKanaAlphabet -> switchFace(
-                if (_state.value.face == KeyboardFace.QwertyKana) KeyboardFace.QwertyAlphabet else KeyboardFace.QwertyKana,
-            )
+            KeyAction.ToggleKanaAlphabet -> switchFace(Faces.otherLanguage(_state.value.textFace))
             KeyAction.ToggleSymbols -> {
                 val state = _state.value
                 switchFace(if (Faces.isSymbol(state.face)) state.textFace else Faces.symbol(settings.symbolLayout))
@@ -299,10 +296,6 @@ class KeyboardController(
      */
     private fun collapseSelection() {
         editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_RIGHT, select = false)
-    }
-
-    private fun cycleFlickMode() {
-        switchFace(if (_state.value.face == KeyboardFace.FlickKana) KeyboardFace.FlickAlphabet else KeyboardFace.FlickKana)
     }
 
     private fun switchFace(face: KeyboardFace) {

@@ -102,7 +102,7 @@ fun FlickKeyboard(
                     TextKey("☆123", { onAction(KeyAction.ToggleSymbols) }, Modifier.weight(1f).fillMaxWidth(), KeyStyle.Function, 14.sp)
                     TextKey(
                         if (face == KeyboardFace.FlickAlphabet) "abc" else "あいう",
-                        { onAction(KeyAction.CycleMode) },
+                        { onAction(KeyAction.ToggleKanaAlphabet) },
                         Modifier.weight(1f).fillMaxWidth(),
                         KeyStyle.Function,
                         14.sp,
@@ -215,16 +215,8 @@ fun QwertyKeyboard(
                 KeyStyle.Function,
                 14.sp,
             )
-            if (!symbols) {
-                TextKey(
-                    if (face == KeyboardFace.QwertyKana) "あ" else "A",
-                    { onAction(KeyAction.ToggleKanaAlphabet) },
-                    Modifier.weight(1f).fillMaxHeight(),
-                    KeyStyle.Function,
-                    16.sp,
-                )
-            }
-            SpaceKey(spaceKind, onAction, Modifier.weight(if (symbols) 5.5f else 4.5f).fillMaxHeight())
+            // 日英の切り替えは上部のボタンで行う
+            SpaceKey(spaceKind, onAction, Modifier.weight(5.5f).fillMaxHeight())
             val punctuation = if (face == KeyboardFace.QwertyKana) listOf("ー", "、", "。") else listOf("-", ",", ".")
             for (p in punctuation) {
                 TextKey(p, { onAction(KeyAction.Text(p)) }, Modifier.weight(0.9f).fillMaxHeight())

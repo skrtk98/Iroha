@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ripple
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
@@ -49,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -57,6 +59,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.unit.sp
 import io.github.skrtk98.iroha.R
+import io.github.skrtk98.iroha.ime.Faces
 import io.github.skrtk98.iroha.ime.KeyAction
 import io.github.skrtk98.iroha.ime.KeyboardFace
 import io.github.skrtk98.iroha.ime.KeyboardUiState
@@ -200,6 +203,7 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
                 longClickLabel = "キーボードを閉じる",
             ) { onAction(KeyAction.OpenSettings) }
             LayoutSwitchButton(onAction, cell)
+            KanaAlphabetButton(state.textFace, onAction, cell)
             ToolbarButton(R.drawable.ic_content_paste, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
                 onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
             }
@@ -230,6 +234,22 @@ private fun LayoutSwitchButton(onAction: (KeyAction) -> Unit, modifier: Modifier
     ) { onAction(KeyAction.ToggleLayout) }
 }
 
+/** 日本語 ⇔ 英字。数字・記号の面からも使え、切り替えた日英の面に戻る。今の日英をラベルで示す。 */
+@Composable
+private fun KanaAlphabetButton(textFace: KeyboardFace, onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
+    val alphabet = Faces.isAlphabet(textFace)
+    ToolbarButton(
+        modifier.semantics { contentDescription = if (alphabet) "日本語に切り替え" else "英字に切り替え" },
+        active = false,
+        onLongClick = null,
+        longClickLabel = null,
+        onClick = { onAction(KeyAction.ToggleKanaAlphabet) },
+    ) { color ->
+        // 線の太いアイコンと並べても細く見えないよう、やや太字にする
+        Text(if (alphabet) "A" else "あ", color = color, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
 /** 上部のアイコンボタン。[onLongClick] があれば長押しにも反応し、振動で知らせる。 */
 @Composable
 fun ToolbarButton(
@@ -240,6 +260,21 @@ fun ToolbarButton(
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
     onClick: () -> Unit,
+) {
+    ToolbarButton(modifier, active, onLongClick, longClickLabel, onClick) { color ->
+        Icon(painterResource(icon), contentDescription = description, tint = color)
+    }
+}
+
+/** 上部のボタンの枠。[content] には状態に応じた前景色を渡す。 */
+@Composable
+private fun ToolbarButton(
+    modifier: Modifier,
+    active: Boolean,
+    onLongClick: (() -> Unit)?,
+    longClickLabel: String?,
+    onClick: () -> Unit,
+    content: @Composable (Color) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
@@ -265,11 +300,7 @@ fun ToolbarButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            painterResource(icon),
-            contentDescription = description,
-            tint = if (active) colors.primary else colors.onSurfaceVariant,
-        )
+        content(if (active) colors.primary else colors.onSurfaceVariant)
     }
 }
 
