@@ -83,5 +83,14 @@ class ClipboardHistoryTest {
         assertEquals(listOf(ClipEntry("line\nnext", pinned = true, time = 5)), old.entries)
     }
 
+    @Test
+    fun lateArrivalsAreOrderedByCopyTime() {
+        val h = ClipboardHistory()
+        h.add("old", 1)
+        h.add("newest", 5)
+        h.add(ClipEntry("", time = 3, image = "late.png"))
+        assertEquals(listOf("text:newest", "image:late.png", "text:old"), h.entries.map { it.key })
+    }
+
     private fun key(text: String) = ClipEntry(text).key
 }

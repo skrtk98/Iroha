@@ -331,8 +331,9 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
         if (state.converting) {
             ToolbarButton(R.drawable.ic_last_page, "文節を伸ばす") { onAction(KeyAction.ResizeSegment(1)) }
         } else {
-            // 入力中はツールバーが隠れるので、配列の切り替えだけはここに残す
+            // 入力中はツールバーが隠れるので、配列と日英の切り替えはここに残す
             LayoutSwitchButton(onAction)
+            KanaAlphabetButton(state.textFace, onAction)
         }
         ToolbarButton(
             if (state.candidateListExpanded) R.drawable.ic_keyboard_arrow_up else R.drawable.ic_keyboard_arrow_down,

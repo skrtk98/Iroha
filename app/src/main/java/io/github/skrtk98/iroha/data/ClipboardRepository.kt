@@ -23,6 +23,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * クリップボード履歴を端末内だけに保存する。変更はメインスレッドから行い、保存はバックグラウンドで行う。
@@ -42,6 +43,9 @@ class ClipboardRepository(
 
     private val file get() = File(context.noBackupFilesDir, "clipboard.tsv")
     private val saveMutex = Mutex()
+
+    /** 保存を終えて、まだ履歴に加えていない画像のファイル名。 */
+    private val pendingImages: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private var loaded = false
 
     /** 初回だけファイルから読む。小さいファイルなのでメインスレッドで読む。 */
@@ -110,7 +114,9 @@ class ClipboardRepository(
                     temp.writeText(snapshot)
                     check(temp.renameTo(file))
                 }.onFailure { Log.w(TAG, "failed to save clipboard history", it) }
-                for (name in removed) imageFile(context, name).delete()
+                // 消した後に同じ画像がコピーし直されていれば、そのファイルは残す
+                val inUse = _entries.value.mapNotNullTo(HashSet()) { it.image } + pendingImages
+                for (name in removed - inUse) imageFile(context, name).delete()
             }
         }
     }
@@ -131,12 +137,15 @@ class ClipboardRepository(
                     val temp = File(target.parentFile, "$name.tmp")
                     temp.writeBytes(bytes)
                     check(temp.renameTo(target))
+                    // 履歴に加えるまでの間に、古い削除の後始末で消されないようにする
+                    pendingImages += name
                 }
                 name
             }.onFailure { Log.w(TAG, "failed to save clipboard image", it) }.getOrNull() ?: return@launch
             withContext(Dispatchers.Main) {
                 history.add(ClipEntry("", time = time, image = name))
                 publish()
+                pendingImages -= name
             }
         }
     }
