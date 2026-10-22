@@ -44,13 +44,34 @@ class ClipboardHistory(
         entries = trim(rest.take(index) + entry + rest.drop(index))
     }
 
-    /** 固定数（画像は画像の固定数）が上限に達しているときは新たに固定しない。固定の解除はいつでもできる。 */
     fun togglePin(key: String) {
         val target = entries.firstOrNull { it.key == key } ?: return
-        if (!target.pinned && entries.count { it.pinned } >= maxPinned) return
-        if (!target.pinned && target.image != null && entries.count { it.pinned && it.image != null } >= maxImages) return
+        setPinned(setOf(key), !target.pinned)
+    }
+
+    /**
+     * [keys] の項目をまとめて固定する、または固定を外す。固定数（画像は画像の固定数）が上限に達したら
+     * 残りは固定せず、固定できなかった数を返す。固定の解除はいつでもできる。
+     */
+    fun setPinned(keys: Set<String>, pinned: Boolean): Int {
+        var pinnedCount = entries.count { it.pinned }
+        var pinnedImages = entries.count { it.pinned && it.image != null }
+        var skipped = 0
+        val next = entries.map { entry ->
+            if (entry.key !in keys || entry.pinned == pinned) return@map entry
+            if (pinned) {
+                if (pinnedCount >= maxPinned || entry.image != null && pinnedImages >= maxImages) {
+                    skipped++
+                    return@map entry
+                }
+                pinnedCount++
+                if (entry.image != null) pinnedImages++
+            }
+            entry.copy(pinned = pinned)
+        }
         // 固定を外すと固定していない項目が増えるので、上限を超えた古いものを外す
-        entries = trim(entries.map { if (it.key == key) it.copy(pinned = !it.pinned) else it })
+        entries = trim(next)
+        return skipped
     }
 
     /** 固定していない項目（うち画像）が上限を超えないよう、古いほうから外す。 */
@@ -62,8 +83,10 @@ class ClipboardHistory(
         }
     }
 
-    fun remove(key: String) {
-        entries = entries.filterNot { it.key == key }
+    fun remove(key: String) = remove(setOf(key))
+
+    fun remove(keys: Set<String>) {
+        entries = entries.filterNot { it.key in keys }
     }
 
     /** 固定していない項目を消す。 */

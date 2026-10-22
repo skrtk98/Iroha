@@ -165,8 +165,10 @@ class KeyboardController(
             }
             is KeyAction.Cursor -> cursor(action.command)
             is KeyAction.PasteClip -> pasteClip(action.clip)
-            is KeyAction.TogglePinClip -> clipboard.togglePin(action.key)
-            is KeyAction.DeleteClip -> clipboard.remove(action.key)
+            is KeyAction.PinClips -> if (clipboard.setPinned(action.keys, action.pinned) > 0) {
+                host.showMessage("固定できる数の上限に達したため、一部は固定していません")
+            }
+            is KeyAction.DeleteClips -> clipboard.remove(action.keys)
             KeyAction.ClearClips -> clipboard.clearUnpinned()
             KeyAction.StartVoice -> startVoice()
             KeyAction.StopVoice -> voice.stop()
