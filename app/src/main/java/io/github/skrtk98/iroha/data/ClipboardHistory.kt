@@ -18,7 +18,12 @@ data class ClipEntry(
  * クリップボード履歴の並び。新しいものが先頭で、固定したものは件数の上限で消えない。
  * 不変のリストを返すので、そのまま UI 状態に載せられる。
  */
-class ClipboardHistory(private val maxUnpinned: Int = 30, private val maxPinned: Int = 50) {
+class ClipboardHistory(
+    private val maxUnpinned: Int = 30,
+    private val maxPinned: Int = 50,
+    /** 画像は大きいので、固定していないもの・固定したものそれぞれ別に少なく抑える。 */
+    private val maxImages: Int = 10,
+) {
 
     var entries: List<ClipEntry> = emptyList()
         private set
@@ -32,17 +37,22 @@ class ClipboardHistory(private val maxUnpinned: Int = 30, private val maxPinned:
     fun add(clip: ClipEntry) {
         if (clip.image == null && clip.text.isBlank()) return
         val existing = entries.firstOrNull { it.key == clip.key }
-        val entry = clip.copy(pinned = existing?.pinned ?: false)
+        // 同じ画像の保存が前後して届いても、新しいほうの時刻を残す
+        val entry = clip.copy(pinned = existing?.pinned ?: false, time = maxOf(clip.time, existing?.time ?: clip.time))
         val rest = entries.filterNot { it.key == clip.key }
         val index = rest.indexOfFirst { it.time <= entry.time }.let { if (it < 0) rest.size else it }
         var unpinned = 0
-        entries = (rest.take(index) + entry + rest.drop(index)).filter { it.pinned || ++unpinned <= maxUnpinned }
+        var unpinnedImages = 0
+        entries = (rest.take(index) + entry + rest.drop(index)).filter {
+            it.pinned || (++unpinned <= maxUnpinned && (it.image == null || ++unpinnedImages <= maxImages))
+        }
     }
 
-    /** 固定数が上限に達しているときは新たに固定しない。固定の解除はいつでもできる。 */
+    /** 固定数（画像は画像の固定数）が上限に達しているときは新たに固定しない。固定の解除はいつでもできる。 */
     fun togglePin(key: String) {
         val target = entries.firstOrNull { it.key == key } ?: return
         if (!target.pinned && entries.count { it.pinned } >= maxPinned) return
+        if (!target.pinned && target.image != null && entries.count { it.pinned && it.image != null } >= maxImages) return
         entries = entries.map { if (it.key == key) it.copy(pinned = !it.pinned) else it }
     }
 

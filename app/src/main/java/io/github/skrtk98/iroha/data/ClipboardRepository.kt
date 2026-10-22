@@ -204,7 +204,7 @@ class ClipboardRepository(
     companion object {
         private const val TAG = "ClipboardRepository"
         private const val MAX_TEXT_LENGTH = 10_000
-        private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024
+        private const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
         private const val IMAGE_DIR = "clips"
 
         /** AndroidManifest の FileProvider の authority は、パッケージ名にこれを付けたもの。 */
