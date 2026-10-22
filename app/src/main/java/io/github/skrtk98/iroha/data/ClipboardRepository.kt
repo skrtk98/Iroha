@@ -144,10 +144,13 @@ class ClipboardRepository(
     private fun saveImage(uri: Uri) {
         val time = System.currentTimeMillis()
         val clearsAtCopy = clearCount
+        // 読む許可はクリップボードが変わると取り消されるので、開くのは今のうちに済ませる。開いたものは読み続けられる
+        val input = runCatching { context.contentResolver.openInputStream(uri) }
+            .onFailure { Log.w(TAG, "failed to open clipboard image", it) }
+            .getOrNull() ?: return
         appScope.launch(Dispatchers.IO) {
             val name = runCatching {
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readAtMost(MAX_IMAGE_BYTES) }
-                    ?: return@launch
+                val bytes = input.use { it.readAtMost(MAX_IMAGE_BYTES) } ?: return@launch
                 // 宣言された型は image/* のように曖昧なことがあるので、形式は中身から決める
                 val extension = imageExtension(bytes) ?: return@launch
                 val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
