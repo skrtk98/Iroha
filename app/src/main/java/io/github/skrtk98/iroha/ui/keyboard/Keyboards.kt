@@ -32,14 +32,15 @@ fun BackspaceKey(onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
     IconKey(R.drawable.ic_backspace, "削除", { onAction(KeyAction.Backspace) }, modifier, repeat = true)
 }
 
+/** 空白キー。入力中は変換・次候補になる。どこにあるかすぐ分かるよう、枠の設定によらず色を付ける。 */
 @Composable
 fun SpaceKey(kind: SpaceKind, onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
-    val label = when (kind) {
-        SpaceKind.Space -> "空白"
-        SpaceKind.Convert -> "変換"
-        SpaceKind.NextCandidate -> "次候補"
+    val onClick = { onAction(KeyAction.Space) }
+    when (kind) {
+        SpaceKind.Space -> IconKey(R.drawable.ic_space_bar, "空白", onClick, modifier, KeyStyle.Secondary)
+        SpaceKind.Convert -> TextKey("変換", onClick, modifier, KeyStyle.Secondary, 15.sp)
+        SpaceKind.NextCandidate -> TextKey("次候補", onClick, modifier, KeyStyle.Secondary, 15.sp)
     }
-    TextKey(label, { onAction(KeyAction.Space) }, modifier, style = KeyStyle.Function, fontSize = 15.sp)
 }
 
 @Composable
