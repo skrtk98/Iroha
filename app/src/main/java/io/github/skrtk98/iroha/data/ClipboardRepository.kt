@@ -68,9 +68,8 @@ class ClipboardRepository(
         ensureLoaded()
         val item = clip.getItemAt(0)
         val uri = item.uri
-        val mimeType = uri?.let { imageMimeType(clip.description, it) }
-        if (uri != null && mimeType != null) {
-            saveImage(uri, mimeType)
+        if (uri != null && isImage(clip.description, uri)) {
+            saveImage(uri)
             return
         }
         val text = item.coerceToText(context)?.toString() ?: return
@@ -136,14 +135,15 @@ class ClipboardRepository(
     }
 
     /** コピー元から画像を読んで保存し、保存できたら履歴に加える。 */
-    private fun saveImage(uri: Uri, mimeType: String) {
-        val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: return
+    private fun saveImage(uri: Uri) {
         val time = System.currentTimeMillis()
         val clearsAtCopy = clearCount
         appScope.launch(Dispatchers.IO) {
             val name = runCatching {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readAtMost(MAX_IMAGE_BYTES) }
                     ?: return@launch
+                // 宣言された型は image/* のように曖昧なことがあるので、形式は中身から決める
+                val extension = imageExtension(bytes) ?: return@launch
                 val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
                 val name = "${hash.take(32)}.$extension"
                 saveMutex.withLock {
@@ -184,11 +184,11 @@ class ClipboardRepository(
         }
     }
 
-    /** 貼り付け先で扱える静止画・アニメーション画像なら、その MIME タイプ。 */
-    private fun imageMimeType(description: ClipDescription, uri: Uri): String? {
+    /** クリップの宣言か提供元の答える型が画像か。形式が扱えるかは読んでから確かめる。 */
+    private fun isImage(description: ClipDescription, uri: Uri): Boolean {
         val declared = (0 until description.mimeTypeCount).map { description.getMimeType(it) }
         val candidates = declared + listOfNotNull(runCatching { context.contentResolver.getType(uri) }.getOrNull())
-        return candidates.firstOrNull { it in IMAGE_TYPES }
+        return candidates.any { it.startsWith("image/") }
     }
 
     private fun isSensitive(description: ClipDescription?): Boolean {
@@ -209,9 +209,21 @@ class ClipboardRepository(
 
         /** AndroidManifest の FileProvider の authority は、パッケージ名にこれを付けたもの。 */
         private const val PROVIDER_SUFFIX = ".clips"
-        private val IMAGE_TYPES = setOf("image/png", "image/jpeg", "image/gif", "image/webp")
 
         /** 画像の項目のファイル。FileProvider の files-path と同じ場所に置く。 */
         fun imageFile(context: Context, name: String) = File(File(context.filesDir, IMAGE_DIR), name)
+    }
+}
+
+/** 貼り付け先で扱いやすい PNG・JPEG・GIF・WebP なら、先頭のバイトから決めた拡張子。 */
+internal fun imageExtension(bytes: ByteArray): String? {
+    fun startsWith(offset: Int, vararg signature: Int) =
+        bytes.size >= offset + signature.size && signature.indices.all { bytes[offset + it] == signature[it].toByte() }
+    return when {
+        startsWith(0, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) -> "png"
+        startsWith(0, 0xFF, 0xD8, 0xFF) -> "jpg"
+        startsWith(0, 0x47, 0x49, 0x46, 0x38) -> "gif"
+        startsWith(0, 0x52, 0x49, 0x46, 0x46) && startsWith(8, 0x57, 0x45, 0x42, 0x50) -> "webp"
+        else -> null
     }
 }

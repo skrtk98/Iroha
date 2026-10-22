@@ -146,13 +146,16 @@ private fun ClipThumbnail(name: String, modifier: Modifier) {
     }
 }
 
-/** カードの幅程度。これより大きい画像は 2 の累乗で間引いて読む。 */
+/** カードの幅程度。短辺がこれより大きい画像は 2 の累乗で間引いて読む。 */
 private val ThumbnailSize = 200.dp
 
 private fun decodeThumbnail(file: File, maxSize: Int): ImageBitmap? = runCatching {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(file.path, bounds)
     var sample = 1
-    while (bounds.outWidth / (sample * 2) >= maxSize && bounds.outHeight / (sample * 2) >= maxSize) sample *= 2
+    val short = minOf(bounds.outWidth, bounds.outHeight)
+    val long = maxOf(bounds.outWidth, bounds.outHeight)
+    // 短辺をカードに合わせて間引く。極端に細長い画像は、長辺も上限に収まるまで間引く
+    while (short / (sample * 2) >= maxSize || long / sample > maxSize * 4) sample *= 2
     BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
 }.getOrNull()
