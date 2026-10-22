@@ -187,10 +187,16 @@ fun QwertyKeyboard(
             Row(Modifier.fillMaxWidth().weight(QwertyNumberRowWeight)) { CharacterKeys(KeyLayouts.symbolRows[0], onAction) }
         }
         Row(rowModifier) { CharacterKeys(rows[0], onAction) }
+        val kana = face == KeyboardFace.QwertyKana
         Row(rowModifier) {
-            Spacer(Modifier.weight(0.5f))
-            CharacterKeys(rows[1], onAction)
-            Spacer(Modifier.weight(0.5f))
+            if (symbols) {
+                Spacer(Modifier.weight(0.5f))
+                CharacterKeys(rows[1], onAction)
+                Spacer(Modifier.weight(0.5f))
+            } else {
+                // 日英の面は長音・ハイフンを l の右に置き、下段を句読点と ！？ に空ける
+                CharacterKeys(rows[1] + if (kana) "ー" else "-", onAction)
+            }
         }
         Row(rowModifier) {
             if (symbols) {
@@ -216,8 +222,12 @@ fun QwertyKeyboard(
                 14.sp,
             )
             // 日英の切り替えは上部のボタンで行う
-            SpaceKey(spaceKind, onAction, Modifier.weight(5.5f).fillMaxHeight())
-            val punctuation = if (face == KeyboardFace.QwertyKana) listOf("ー", "、", "。") else listOf("-", ",", ".")
+            SpaceKey(spaceKind, onAction, Modifier.weight(if (symbols) 5.5f else 4.4f).fillMaxHeight())
+            val punctuation = when {
+                symbols -> listOf("-", ",", ".")
+                kana -> listOf("！", "？", "、", "。")
+                else -> listOf("!", "?", ",", ".")
+            }
             for (p in punctuation) {
                 TextKey(p, { onAction(KeyAction.Text(p)) }, Modifier.weight(0.9f).fillMaxHeight())
             }
