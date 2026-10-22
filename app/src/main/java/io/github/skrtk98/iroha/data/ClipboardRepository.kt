@@ -44,6 +44,9 @@ class ClipboardRepository(
     private val file get() = File(context.noBackupFilesDir, "clipboard.tsv")
     private val saveMutex = Mutex()
 
+    /** 履歴を消去した回数。消去より前にコピーし、読み込み中だった画像を加えないために使う。メインスレッドだけで触る。 */
+    private var clearCount = 0
+
     /** 保存を終えて、まだ履歴に加えていない画像のファイル名。 */
     private val pendingImages: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private var loaded = false
@@ -82,10 +85,16 @@ class ClipboardRepository(
     fun remove(key: String) = mutate { history.remove(key) }
 
     @MainThread
-    fun clearUnpinned() = mutate { history.clearUnpinned() }
+    fun clearUnpinned() = mutate {
+        clearCount++
+        history.clearUnpinned()
+    }
 
     @MainThread
-    fun clearAll() = mutate { history.clearAll() }
+    fun clearAll() = mutate {
+        clearCount++
+        history.clearAll()
+    }
 
     /** 他のアプリに渡すための、画像の項目の URI と MIME タイプ。 */
     fun imageContent(entry: ClipEntry): Pair<Uri, String>? {
@@ -130,6 +139,7 @@ class ClipboardRepository(
     private fun saveImage(uri: Uri, mimeType: String) {
         val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: return
         val time = System.currentTimeMillis()
+        val clearsAtCopy = clearCount
         appScope.launch(Dispatchers.IO) {
             val name = runCatching {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readAtMost(MAX_IMAGE_BYTES) }
@@ -148,10 +158,13 @@ class ClipboardRepository(
                 name
             }.onFailure { Log.w(TAG, "failed to save clipboard image", it) }.getOrNull() ?: return@launch
             withContext(Dispatchers.Main) {
-                history.add(ClipEntry("", time = time, image = name))
-                publish()
+                // 読み込み中に履歴が消去されたり、記録が止められたりしたら加えない
+                if (clearCount == clearsAtCopy && settings.clipboardHistory) {
+                    history.add(ClipEntry("", time = time, image = name))
+                    publish()
+                }
                 pendingImages -= name
-                // 遅れて届き、件数の上限ですぐに外れた画像は残さない
+                // 加えなかった画像や、遅れて届いて件数の上限ですぐに外れた画像は残さない
                 if (history.entries.none { it.image == name }) {
                     appScope.launch(Dispatchers.IO) { saveMutex.withLock { deleteUnusedImages(setOf(name)) } }
                 }
