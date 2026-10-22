@@ -203,7 +203,7 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
                 longClickLabel = "キーボードを閉じる",
             ) { onAction(KeyAction.OpenSettings) }
             KanaAlphabetButton(state.textFace, onAction, cell)
-            ToolbarButton(R.drawable.ic_clipboard_history, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
+            ToolbarButton(R.drawable.ic_assignment, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
                 onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
             }
             ToolbarButton(R.drawable.ic_open_with, "カーソル移動", cell, active = state.panel == Panel.Cursor) {
