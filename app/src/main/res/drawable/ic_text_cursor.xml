@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <!-- 文字の選択を表すアイビーム（I 字型のカーソル） -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M300,140h140q40,0 40,40q0,-40 40,-40h140v90h-130v200h80v90h-80v200h130v90H520q-40,0 -40,-40q0,40 -40,40H300v-90h130V520h-80v-90h80V230H300Z" />
+</vector>
