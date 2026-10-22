@@ -184,7 +184,7 @@ fun SettingsScreen(
 
             HorizontalDivider()
             SectionTitle("クリップボード")
-            SwitchRow("コピーした文字列を履歴に残す", state.clipboardHistory, onClipboardHistoryChange)
+            SwitchRow("コピーした文字列や画像を履歴に残す", state.clipboardHistory, onClipboardHistoryChange)
             Text(
                 "履歴は端末内にだけ保存します。パスワードなど機密扱いのコピーは記録しません。",
                 style = MaterialTheme.typography.bodySmall,

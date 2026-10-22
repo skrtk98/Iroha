@@ -7,6 +7,7 @@ import android.os.Build
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
@@ -148,6 +149,10 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
 
     override fun hideKeyboard() {
         requestHideSelf(0)
+    }
+
+    override fun showMessage(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private companion object {

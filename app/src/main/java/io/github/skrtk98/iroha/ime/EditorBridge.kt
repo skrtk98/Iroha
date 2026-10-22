@@ -1,5 +1,7 @@
 package io.github.skrtk98.iroha.ime
 
+import android.content.ClipDescription
+import android.net.Uri
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
@@ -7,6 +9,9 @@ import android.text.style.UnderlineSpan
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import androidx.core.view.inputmethod.EditorInfoCompat
+import androidx.core.view.inputmethod.InputConnectionCompat
+import androidx.core.view.inputmethod.InputContentInfoCompat
 import io.github.skrtk98.iroha.engine.session.Preedit
 
 /** エディタへの書き込み。テストで差し替えられるよう InputConnection を隠す。 */
@@ -23,6 +28,9 @@ interface EditorBridge {
 
     /** android.R.id.copy などのコンテキストメニュー操作。 */
     fun performContextMenuAction(id: Int)
+
+    /** 画像を貼り付ける。入力欄がその形式の画像を受け付けなければ false。 */
+    fun commitImage(uri: Uri, mimeType: String): Boolean
 }
 
 class InputConnectionBridge(
@@ -98,6 +106,21 @@ class InputConnectionBridge(
 
     override fun performContextMenuAction(id: Int) {
         connection()?.performContextMenuAction(id)
+    }
+
+    override fun commitImage(uri: Uri, mimeType: String): Boolean {
+        val ic = connection() ?: return false
+        val info = editorInfo() ?: return false
+        val accepted = EditorInfoCompat.getContentMimeTypes(info)
+        if (accepted.none { ClipDescription.compareMimeTypes(mimeType, it) }) return false
+        val content = InputContentInfoCompat(uri, ClipDescription("image", arrayOf(mimeType)), null)
+        return InputConnectionCompat.commitContent(
+            ic,
+            info,
+            content,
+            InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+            null,
+        )
     }
 
     private fun sendKey(ic: InputConnection, code: Int) {
