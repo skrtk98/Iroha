@@ -314,6 +314,8 @@ class KeyboardController(
      */
     private fun collapseSelection() {
         editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_RIGHT, select = false)
+        // 欄からの通知を待たずに解除済みとする。続けて押されても、もう一度カーソルを動かさない
+        textSelected = false
     }
 
     private fun switchFace(face: KeyboardFace) {
