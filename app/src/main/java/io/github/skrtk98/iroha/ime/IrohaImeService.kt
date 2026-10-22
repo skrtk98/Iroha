@@ -7,6 +7,7 @@ import android.os.Build
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
@@ -118,8 +119,10 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
 
     override fun onDestroy() {
         clipboardManager.removePrimaryClipChangedListener(clipListener)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        // 表示中に破棄されると super.onDestroy() から onFinishInputView が呼ばれ、ON_PAUSE を送る。
+        // 先に DESTROYED にするとその遷移で落ちるので、ON_DESTROY は最後に送る
         super.onDestroy()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
     }
 
     override fun openSettings() {
@@ -148,6 +151,10 @@ class IrohaImeService : InputMethodService(), LifecycleOwner, SavedStateRegistry
 
     override fun hideKeyboard() {
         requestHideSelf(0)
+    }
+
+    override fun showMessage(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private companion object {

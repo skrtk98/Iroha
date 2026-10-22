@@ -17,7 +17,7 @@ class ClipboardHistoryTest {
     fun pinnedEntriesSurviveTheLimit() {
         val h = ClipboardHistory(maxUnpinned = 2)
         h.add("keep", 0)
-        h.togglePin("keep")
+        h.togglePin(key("keep"))
         h.add("1", 1)
         h.add("2", 2)
         h.add("3", 3)
@@ -37,7 +37,7 @@ class ClipboardHistoryTest {
     fun roundTripsSpecialCharacters() {
         val h = ClipboardHistory()
         h.add("line1\nline2\ttab\\slash", 5)
-        h.togglePin("line1\nline2\ttab\\slash")
+        h.togglePin(key("line1\nline2\ttab\\slash"))
         val restored = ClipboardHistory()
         restored.deserialize(h.serialize())
         assertEquals(h.entries, restored.entries)
@@ -48,11 +48,83 @@ class ClipboardHistoryTest {
         val h = ClipboardHistory(maxUnpinned = 10, maxPinned = 1)
         h.add("a", 1)
         h.add("b", 2)
-        h.togglePin("a")
-        h.togglePin("b")
+        h.togglePin(key("a"))
+        h.togglePin(key("b"))
         assertEquals(listOf("a"), h.entries.filter { it.pinned }.map { it.text })
-        h.togglePin("a")
-        h.togglePin("b")
+        h.togglePin(key("a"))
+        h.togglePin(key("b"))
         assertEquals(listOf("b"), h.entries.filter { it.pinned }.map { it.text })
     }
+
+    @Test
+    fun imagesAreKeptApartFromTextAndDeduplicated() {
+        val h = ClipboardHistory()
+        h.add("a.png", 1)
+        h.add(ClipEntry("", time = 2, image = "a.png"))
+        h.add(ClipEntry("", time = 3, image = "b.png"))
+        h.add(ClipEntry("", time = 4, image = "a.png"))
+        assertEquals(listOf("a.png", "b.png", null), h.entries.map { it.image })
+        h.remove(ClipEntry("", image = "b.png").key)
+        assertEquals(listOf("a.png", null), h.entries.map { it.image })
+    }
+
+    @Test
+    fun roundTripsImagesAndReadsTheOldFormat() {
+        val h = ClipboardHistory()
+        h.add("text", 1)
+        h.add(ClipEntry("", time = 2, image = "abc.png"))
+        h.togglePin(ClipEntry("", image = "abc.png").key)
+        val restored = ClipboardHistory()
+        restored.deserialize(h.serialize())
+        assertEquals(h.entries, restored.entries)
+
+        val old = ClipboardHistory()
+        old.deserialize("1\t5\tline\\nnext\n")
+        assertEquals(listOf(ClipEntry("line\nnext", pinned = true, time = 5)), old.entries)
+    }
+
+    @Test
+    fun lateArrivalsAreOrderedByCopyTime() {
+        val h = ClipboardHistory()
+        h.add("old", 1)
+        h.add("newest", 5)
+        h.add(ClipEntry("", time = 3, image = "late.png"))
+        assertEquals(listOf("text:newest", "image:late.png", "text:old"), h.entries.map { it.key })
+    }
+
+    @Test
+    fun duplicateImagesKeepTheNewestTime() {
+        val h = ClipboardHistory()
+        h.add(ClipEntry("", time = 5, image = "a.png"))
+        h.add(ClipEntry("", time = 3, image = "a.png"))
+        assertEquals(listOf(5L), h.entries.map { it.time })
+    }
+
+    @Test
+    fun imagesHaveTheirOwnLimits() {
+        val h = ClipboardHistory(maxImages = 2)
+        h.add(ClipEntry("", time = 1, image = "1.png"))
+        h.add("text", 2)
+        h.add(ClipEntry("", time = 3, image = "2.png"))
+        h.add(ClipEntry("", time = 4, image = "3.png"))
+        assertEquals(listOf("image:3.png", "image:2.png", "text:text"), h.entries.map { it.key })
+
+        h.togglePin("image:3.png")
+        h.togglePin("image:2.png")
+        h.add(ClipEntry("", time = 5, image = "4.png"))
+        h.togglePin("image:4.png")
+        assertEquals(listOf("3.png", "2.png"), h.entries.filter { it.pinned }.mapNotNull { it.image })
+    }
+
+    @Test
+    fun unpinningReappliesTheLimits() {
+        val h = ClipboardHistory(maxImages = 1)
+        h.add(ClipEntry("", time = 1, image = "old.png"))
+        h.togglePin("image:old.png")
+        h.add(ClipEntry("", time = 2, image = "new.png"))
+        h.togglePin("image:old.png")
+        assertEquals(listOf("image:new.png"), h.entries.map { it.key })
+    }
+
+    private fun key(text: String) = ClipEntry(text).key
 }

@@ -3,6 +3,7 @@ package io.github.skrtk98.iroha.ime
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
+import io.github.skrtk98.iroha.data.ClipEntry
 import io.github.skrtk98.iroha.data.ClipboardRepository
 import io.github.skrtk98.iroha.data.Engine
 import io.github.skrtk98.iroha.data.Settings
@@ -26,6 +27,9 @@ interface ImeHost {
     fun requestMicPermission()
     fun switchInputMethod()
     fun hideKeyboard()
+
+    /** キーボードの外に短い知らせを出す。 */
+    fun showMessage(message: String)
 }
 
 /**
@@ -53,7 +57,7 @@ class KeyboardController(
     /** エディタに未確定文字列を表示しているか。 */
     private var hasPreedit = false
 
-    /** 直接入力（英字・数字・パスワード欄など）で変換を使わない。 */
+    /** 数字・パスワードの欄。日本語の面でも変換を使わず、打った文字をそのまま入れる。 */
     private var directInput = false
 
     init {
@@ -81,22 +85,17 @@ class KeyboardController(
         // restarting でも別の欄に移っていることがある（Compose の同一ビュー内のフォーカス移動など）ので必ず捨てる
         resetComposition()
         val inputType = info?.inputType ?: 0
-        val inputClass = inputType and InputType.TYPE_MASK_CLASS
-        val variation = inputType and InputType.TYPE_MASK_VARIATION
-        val layout = settings.defaultLayout
-        val isNumeric = inputClass == InputType.TYPE_CLASS_NUMBER ||
-            inputClass == InputType.TYPE_CLASS_PHONE ||
-            inputClass == InputType.TYPE_CLASS_DATETIME
-        val isAscii = inputClass == InputType.TYPE_CLASS_TEXT && variation in ASCII_VARIATIONS
-        val textFace = Faces.text(layout, alphabet = isAscii)
+        val isNumeric = InputFields.isNumeric(inputType)
+        val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType))
         // 数値欄は数字の打ちやすいテンキー（フリック）にする
         val face = if (isNumeric) KeyboardFace.FlickNumber else textFace
-        directInput = isNumeric || isAscii
+        // それ以外の欄は、日本語の面に切り替えればローマ字・かなを変換する
+        directInput = isNumeric || InputFields.isPassword(inputType)
         _state.update {
             it.copy(
                 face = face,
                 textFace = textFace,
-                shifted = false,
+                shift = ShiftState.Off,
                 enterKind = enterKindOf(info),
                 candidateListExpanded = false,
                 panel = if (restarting) it.panel else Panel.None,
@@ -144,19 +143,12 @@ class KeyboardController(
             KeyAction.CursorLeft -> moveCursor(-1)
             KeyAction.CursorRight -> moveCursor(1)
             KeyAction.ToggleModifier -> if (session?.toggleModifier() == true) render()
-            KeyAction.Shift -> _state.update { it.copy(shifted = !it.shifted) }
-            KeyAction.CycleMode -> cycleFlickMode()
-            KeyAction.ToggleKanaAlphabet -> switchFace(
-                if (_state.value.face == KeyboardFace.QwertyKana) KeyboardFace.QwertyAlphabet else KeyboardFace.QwertyKana,
-            )
+            KeyAction.Shift -> _state.update { it.copy(shift = it.shift.tap()) }
+            KeyAction.LockShift -> _state.update { it.copy(shift = ShiftState.Locked) }
+            KeyAction.ToggleKanaAlphabet -> switchFace(Faces.otherLanguage(_state.value.textFace))
             KeyAction.ToggleSymbols -> {
                 val state = _state.value
                 switchFace(if (Faces.isSymbol(state.face)) state.textFace else Faces.symbol(settings.symbolLayout))
-            }
-            KeyAction.ToggleLayout -> {
-                val next = Faces.otherLayout(_state.value.face)
-                if (Faces.isSymbol(next)) settings.symbolLayout = Faces.layoutOf(next) else settings.defaultLayout = Faces.layoutOf(next)
-                switchFace(next)
             }
             is KeyAction.SelectCandidate -> selectCandidate(action.index)
             KeyAction.ToggleCandidateList -> _state.update { it.copy(candidateListExpanded = !it.candidateListExpanded) }
@@ -172,12 +164,9 @@ class KeyboardController(
                 _state.update { it.copy(panel = Panel.None, selecting = false, voice = VoiceUiState()) }
             }
             is KeyAction.Cursor -> cursor(action.command)
-            is KeyAction.PasteClip -> {
-                commitAll()
-                editor.commitText(action.text)
-            }
-            is KeyAction.TogglePinClip -> clipboard.togglePin(action.text)
-            is KeyAction.DeleteClip -> clipboard.remove(action.text)
+            is KeyAction.PasteClip -> pasteClip(action.clip)
+            is KeyAction.TogglePinClip -> clipboard.togglePin(action.key)
+            is KeyAction.DeleteClip -> clipboard.remove(action.key)
             KeyAction.ClearClips -> clipboard.clearUnpinned()
             KeyAction.StartVoice -> startVoice()
             KeyAction.StopVoice -> voice.stop()
@@ -192,15 +181,30 @@ class KeyboardController(
         }
     }
 
+    private fun pasteClip(clip: ClipEntry) {
+        commitAll()
+        if (clip.image == null) {
+            editor.commitText(clip.text)
+            return
+        }
+        val content = clipboard.imageContent(clip)
+        when {
+            content == null -> host.showMessage("画像が見つかりません")
+            !editor.commitImage(content.first, content.second) -> host.showMessage("この入力欄には画像を貼り付けられません")
+        }
+    }
+
     private fun inputText(text: String) {
         val s = session
         val face = _state.value.face
         val kanaFace = face == KeyboardFace.FlickKana || face == KeyboardFace.QwertyKana
-        if (s == null || directInput || !kanaFace) {
+        val shifted = _state.value.shifted && face != KeyboardFace.QwertySymbols
+        // かなの面でもシフト中の英字はローマ字にせず、大文字のまま確定する
+        val shiftedLetter = shifted && text.length == 1 && text[0].lowercaseChar() in 'a'..'z'
+        if (s == null || directInput || !kanaFace || shiftedLetter) {
             commitAll()
-            val shifted = _state.value.shifted
             editor.commitText(if (shifted) text.uppercase() else text)
-            if (shifted && face != KeyboardFace.QwertySymbols) _state.update { it.copy(shifted = false) }
+            if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
             return
         }
         val committed = s.insert(text, romaji = face == KeyboardFace.QwertyKana)
@@ -301,14 +305,10 @@ class KeyboardController(
         editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_RIGHT, select = false)
     }
 
-    private fun cycleFlickMode() {
-        switchFace(if (_state.value.face == KeyboardFace.FlickKana) KeyboardFace.FlickAlphabet else KeyboardFace.FlickKana)
-    }
-
     private fun switchFace(face: KeyboardFace) {
         commitAll()
         _state.update {
-            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shifted = false)
+            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shift = ShiftState.Off)
         }
     }
 
@@ -429,16 +429,5 @@ class KeyboardController(
             EditorInfo.IME_ACTION_DONE -> EnterKind.Done
             else -> EnterKind.Newline
         }
-    }
-
-    private companion object {
-        val ASCII_VARIATIONS = setOf(
-            InputType.TYPE_TEXT_VARIATION_PASSWORD,
-            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
-            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
-            InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
-            InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
-            InputType.TYPE_TEXT_VARIATION_URI,
-        )
     }
 }

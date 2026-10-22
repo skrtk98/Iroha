@@ -33,6 +33,17 @@
                 android:resource="@xml/method" />
         </service>
 
+        <!-- クリップボード履歴の画像を貼り付け先に渡す。読む権限は貼り付けのたびに一時的に与える -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.clips"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/clip_paths" />
+        </provider>
+
         <activity
             android:name=".settings.SettingsActivity"
             android:exported="true"
