@@ -100,7 +100,7 @@ class KeyboardController(
             it.copy(
                 face = face,
                 textFace = textFace,
-                shifted = false,
+                shift = ShiftState.Off,
                 enterKind = enterKindOf(info),
                 candidateListExpanded = false,
                 panel = if (restarting) it.panel else Panel.None,
@@ -148,7 +148,8 @@ class KeyboardController(
             KeyAction.CursorLeft -> moveCursor(-1)
             KeyAction.CursorRight -> moveCursor(1)
             KeyAction.ToggleModifier -> if (session?.toggleModifier() == true) render()
-            KeyAction.Shift -> _state.update { it.copy(shifted = !it.shifted) }
+            KeyAction.Shift -> _state.update { it.copy(shift = it.shift.tap()) }
+            KeyAction.LockShift -> _state.update { it.copy(shift = ShiftState.Locked) }
             KeyAction.ToggleKanaAlphabet -> switchFace(Faces.otherLanguage(_state.value.textFace))
             KeyAction.ToggleSymbols -> {
                 val state = _state.value
@@ -207,11 +208,13 @@ class KeyboardController(
         val s = session
         val face = _state.value.face
         val kanaFace = face == KeyboardFace.FlickKana || face == KeyboardFace.QwertyKana
-        if (s == null || directInput || !kanaFace) {
+        val shifted = _state.value.shifted && face != KeyboardFace.QwertySymbols
+        // かなの面でもシフト中の英字はローマ字にせず、大文字のまま確定する
+        val shiftedLetter = shifted && text.length == 1 && text[0].lowercaseChar() in 'a'..'z'
+        if (s == null || directInput || !kanaFace || shiftedLetter) {
             commitAll()
-            val shifted = _state.value.shifted
             editor.commitText(if (shifted) text.uppercase() else text)
-            if (shifted && face != KeyboardFace.QwertySymbols) _state.update { it.copy(shifted = false) }
+            if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
             return
         }
         val committed = s.insert(text, romaji = face == KeyboardFace.QwertyKana)
@@ -315,7 +318,7 @@ class KeyboardController(
     private fun switchFace(face: KeyboardFace) {
         commitAll()
         _state.update {
-            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shifted = false)
+            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shift = ShiftState.Off)
         }
     }
 
