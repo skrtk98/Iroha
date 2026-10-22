@@ -73,10 +73,10 @@ fun VoicePanel(
         Row(Modifier.fillMaxWidth().height(52.dp)) {
             TextKey("キーボードに戻る", { onAction(KeyAction.ClosePanel) }, Modifier.weight(1f), KeyStyle.Function, 15.sp)
             when (voice.status) {
-                VoiceStatus.Listening -> TextKey("停止", { onAction(KeyAction.StopVoice) }, Modifier.weight(1f), KeyStyle.Accent, 15.sp)
+                VoiceStatus.Listening -> IconKey(R.drawable.ic_stop, "停止", { onAction(KeyAction.StopVoice) }, Modifier.weight(1f), KeyStyle.Accent)
                 VoiceStatus.NeedsPermission ->
                     TextKey("権限を許可", { onAction(KeyAction.RequestMicPermission) }, Modifier.weight(1f), KeyStyle.Accent, 15.sp)
-                else -> TextKey("もう一度話す", { onAction(KeyAction.StartVoice) }, Modifier.weight(1f), KeyStyle.Accent, 15.sp)
+                else -> IconKey(R.drawable.ic_mic, "もう一度話す", { onAction(KeyAction.StartVoice) }, Modifier.weight(1f), KeyStyle.Accent)
             }
         }
     }
