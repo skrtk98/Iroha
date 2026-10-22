@@ -69,5 +69,5 @@ enum class Panel { None, Cursor, Clipboard, Voice }
 
 enum class CursorCommand {
     Left, Right, Up, Down, LineStart, LineEnd,
-    ToggleSelection, SelectAll, Copy, Cut, Paste,
+    ToggleSelection, Deselect, SelectAll, Copy, Cut, Paste,
 }
