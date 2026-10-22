@@ -44,6 +44,10 @@ class ClipboardRepository(
     private val file get() = File(context.noBackupFilesDir, "clipboard.tsv")
     private val saveMutex = Mutex()
 
+    /** 履歴を公開した回数（メインスレッドで数える）と、ファイルに書けた最新の回。後者は [saveMutex] の中で触る。 */
+    private var publishCount = 0L
+    private var savedVersion = 0L
+
     /** 履歴を消去した回数。消去より前にコピーし、読み込み中だった画像を加えないために使う。メインスレッドだけで触る。 */
     private var clearCount = 0
 
@@ -131,15 +135,20 @@ class ClipboardRepository(
         val removed = _entries.value.mapNotNullTo(HashSet()) { it.image } - history.entries.mapNotNullTo(HashSet()) { it.image }
         _entries.value = history.entries
         val snapshot = history.serialize()
+        val version = ++publishCount
         appScope.launch(Dispatchers.IO) {
             saveMutex.withLock {
-                runCatching {
-                    val temp = File(file.parentFile, file.name + ".tmp")
-                    temp.writeText(snapshot)
-                    check(temp.renameTo(file))
-                }.onFailure { Log.w(TAG, "failed to save clipboard history", it) }
-                    // 保存に失敗したら、ファイルに残る古い履歴が指す画像を消さない
-                    .onSuccess { deleteUnusedImages(removed) }
+                // 保存の順は前後しうるので、新しい履歴を書いた後に古い履歴で上書きしない
+                if (version > savedVersion) {
+                    runCatching {
+                        val temp = File(file.parentFile, file.name + ".tmp")
+                        temp.writeText(snapshot)
+                        check(temp.renameTo(file))
+                        savedVersion = version
+                    }.onFailure { Log.w(TAG, "failed to save clipboard history", it) }
+                }
+                // 保存に失敗したら、ファイルに残る古い履歴が指す画像を消さない
+                if (savedVersion >= version) deleteUnusedImages(removed)
             }
         }
     }
