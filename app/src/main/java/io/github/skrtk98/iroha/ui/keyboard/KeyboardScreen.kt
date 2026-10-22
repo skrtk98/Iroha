@@ -197,13 +197,6 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
     Box(modifier) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             val cell = Modifier.weight(1f)
-            ToolbarButton(
-                R.drawable.ic_settings,
-                "設定",
-                cell,
-                onLongClick = { onAction(KeyAction.HideKeyboard) },
-                longClickLabel = "キーボードを閉じる",
-            ) { onAction(KeyAction.OpenSettings) }
             // パネル（クリップボード・カーソル移動・音声）では切り替えても何も変わらないので押せなくする
             KanaAlphabetButton(state.textFace, onAction, cell, enabled = state.panel == Panel.None)
             ToolbarButton(R.drawable.ic_assignment, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
@@ -212,6 +205,13 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
             ToolbarButton(R.drawable.ic_open_with, "カーソル移動", cell, active = state.panel == Panel.Cursor) {
                 onAction(if (state.panel == Panel.Cursor) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Cursor))
             }
+            ToolbarButton(
+                R.drawable.ic_settings,
+                "設定",
+                cell,
+                onLongClick = { onAction(KeyAction.HideKeyboard) },
+                longClickLabel = "キーボードを閉じる",
+            ) { onAction(KeyAction.OpenSettings) }
             ToolbarButton(R.drawable.ic_mic, "音声入力", cell, active = state.panel == Panel.Voice) {
                 onAction(if (state.panel == Panel.Voice) KeyAction.ClosePanel else KeyAction.StartVoice)
             }

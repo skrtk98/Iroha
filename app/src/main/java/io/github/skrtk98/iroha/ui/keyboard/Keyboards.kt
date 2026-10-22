@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.sp
 import io.github.skrtk98.iroha.R
 import io.github.skrtk98.iroha.ime.EnterKind
@@ -43,29 +40,25 @@ fun SpaceKey(kind: SpaceKind, onAction: (KeyAction) -> Unit, modifier: Modifier 
     }
 }
 
+/**
+ * 確定・改行キー。入力欄の求める動作は記号で示し、入力中の確定だけは対応する記号が無いので文字にする。
+ */
 @Composable
 fun EnterKey(kind: EnterKind, composing: Boolean, onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
-    val label = when {
-        composing -> "確定"
-        kind == EnterKind.Go -> "移動"
-        kind == EnterKind.Search -> "検索"
-        kind == EnterKind.Send -> "送信"
-        kind == EnterKind.Next -> "次へ"
-        kind == EnterKind.Done -> "完了"
-        else -> null
+    val onClick = { onAction(KeyAction.Enter) }
+    if (composing) {
+        TextKey("確定", onClick, modifier, KeyStyle.Accent, 15.sp)
+        return
     }
-    KeyButton(
-        onClick = { onAction(KeyAction.Enter) },
-        modifier = modifier,
-        style = KeyStyle.Accent,
-        description = label ?: "改行",
-    ) { color ->
-        if (label != null) {
-            Text(label, color = color, fontSize = 15.sp)
-        } else {
-            Icon(painterResource(R.drawable.ic_keyboard_return), contentDescription = null, tint = color)
-        }
+    val (icon, description) = when (kind) {
+        EnterKind.Go -> R.drawable.ic_arrow_forward to "移動"
+        EnterKind.Search -> R.drawable.ic_search to "検索"
+        EnterKind.Send -> R.drawable.ic_send to "送信"
+        EnterKind.Next -> R.drawable.ic_keyboard_tab to "次へ"
+        EnterKind.Done -> R.drawable.ic_check to "完了"
+        else -> R.drawable.ic_keyboard_return to "改行"
     }
+    IconKey(icon, description, onClick, modifier, KeyStyle.Accent)
 }
 
 /**
