@@ -1,0 +1,39 @@
+# Iroha
+
+完全オフラインで、軽量かつ軽快な Android 向け日本語入力（IME）。
+
+- インターネット権限を持たず、入力内容も音声も端末の外に送りません
+- mozc の辞書を使った Kotlin 製のかな漢字変換
+- フリック入力と QWERTY（ローマ字）入力。日本語・英字と数字・記号で、それぞれ配列を選べます
+- クリップボード履歴（固定・削除）
+- カーソルモード（移動・選択・コピー・切り取り・貼り付け）
+- 端末内の音声認識による音声入力（Android 12 以降で端末内認識に対応した端末）
+- ユーザー辞書のインポート・エクスポート
+- キーボードの高さ調整、キーの枠の表示切り替え、QWERTY の数字段
+
+## 動作環境
+
+Android 8.0（API 26）以降
+
+## インストール
+
+[Releases](https://github.com/skrtk98/Iroha/releases) から APK を入れ、アプリの設定画面の「はじめに」に従って
+入力方法として有効にしてください。
+
+## ビルド
+
+JDK 17 が必要です。初回のビルドで mozc の辞書を取得して変換用の辞書を作ります。
+
+```sh
+./gradlew :app:assembleRelease
+```
+
+署名の設定（`signing.properties`）が無ければ、未署名の APK を出力します。署名の方法は
+`signing.properties.example` を参照してください。
+
+## ライセンス
+
+[Apache License 2.0](LICENSE)
+
+同梱する第三者のライセンス（mozc とその辞書、Material Symbols）は `app/src/main/assets/licenses/` にあり、
+アプリの設定画面からも確認できます。
