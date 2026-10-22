@@ -82,7 +82,7 @@ class ClipboardRepository(
         ensureLoaded()
         val item = clip.getItemAt(0)
         val uri = item.uri
-        if (uri != null && isImage(clip.description, uri)) {
+        if (uri != null && isImage(clip.description)) {
             saveImage(uri)
             return
         }
@@ -227,12 +227,12 @@ class ClipboardRepository(
         }
     }
 
-    /** クリップの宣言か提供元の答える型が画像か。形式が扱えるかは読んでから確かめる。 */
-    private fun isImage(description: ClipDescription, uri: Uri): Boolean {
-        val declared = (0 until description.mimeTypeCount).map { description.getMimeType(it) }
-        val candidates = declared + listOfNotNull(runCatching { context.contentResolver.getType(uri) }.getOrNull())
-        return candidates.any { it.startsWith("image/") }
-    }
+    /**
+     * クリップが画像を宣言しているか。ClipData.newUri はコピーする側で提供元の型を宣言に含めるので、
+     * ここで提供元に問い合わせ直さない（メインスレッドから他のアプリを待つことになる）。形式は読んでから確かめる。
+     */
+    private fun isImage(description: ClipDescription): Boolean =
+        (0 until description.mimeTypeCount).any { description.getMimeType(it).startsWith("image/") }
 
     private fun isSensitive(description: ClipDescription?): Boolean {
         val extras: PersistableBundle = description?.extras ?: return false
