@@ -218,6 +218,8 @@ class KeyboardController(
         }
         val committed = s.insert(text, romaji = face == KeyboardFace.QwertyKana)
         if (committed.isNotEmpty()) editor.commitText(committed)
+        // シフト中の記号（～ や 「 など）は読みに入れ、英字と同じく 1 文字でシフトを戻す
+        if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
         render()
     }
 
