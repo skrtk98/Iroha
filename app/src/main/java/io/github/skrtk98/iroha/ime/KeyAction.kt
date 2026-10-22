@@ -1,5 +1,7 @@
 package io.github.skrtk98.iroha.ime
 
+import io.github.skrtk98.iroha.data.ClipEntry
+
 /** キーボードから IME への操作。 */
 sealed interface KeyAction {
     /** 文字の入力。かな入力モードでは未確定文字列に、それ以外では直接エディタに入る。 */
@@ -39,9 +41,11 @@ sealed interface KeyAction {
     /** カーソルモードの操作。 */
     data class Cursor(val command: CursorCommand) : KeyAction
 
-    data class PasteClip(val text: String) : KeyAction
-    data class TogglePinClip(val text: String) : KeyAction
-    data class DeleteClip(val text: String) : KeyAction
+    data class PasteClip(val clip: ClipEntry) : KeyAction
+
+    /** クリップボード履歴の項目を、[ClipEntry.key] で指す。 */
+    data class TogglePinClip(val key: String) : KeyAction
+    data class DeleteClip(val key: String) : KeyAction
     data object ClearClips : KeyAction
 
     data object StartVoice : KeyAction

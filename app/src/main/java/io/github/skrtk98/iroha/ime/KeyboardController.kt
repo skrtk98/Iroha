@@ -3,6 +3,7 @@ package io.github.skrtk98.iroha.ime
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
+import io.github.skrtk98.iroha.data.ClipEntry
 import io.github.skrtk98.iroha.data.ClipboardRepository
 import io.github.skrtk98.iroha.data.Engine
 import io.github.skrtk98.iroha.data.Settings
@@ -26,6 +27,9 @@ interface ImeHost {
     fun requestMicPermission()
     fun switchInputMethod()
     fun hideKeyboard()
+
+    /** キーボードの外に短い知らせを出す。 */
+    fun showMessage(message: String)
 }
 
 /**
@@ -169,12 +173,9 @@ class KeyboardController(
                 _state.update { it.copy(panel = Panel.None, selecting = false, voice = VoiceUiState()) }
             }
             is KeyAction.Cursor -> cursor(action.command)
-            is KeyAction.PasteClip -> {
-                commitAll()
-                editor.commitText(action.text)
-            }
-            is KeyAction.TogglePinClip -> clipboard.togglePin(action.text)
-            is KeyAction.DeleteClip -> clipboard.remove(action.text)
+            is KeyAction.PasteClip -> pasteClip(action.clip)
+            is KeyAction.TogglePinClip -> clipboard.togglePin(action.key)
+            is KeyAction.DeleteClip -> clipboard.remove(action.key)
             KeyAction.ClearClips -> clipboard.clearUnpinned()
             KeyAction.StartVoice -> startVoice()
             KeyAction.StopVoice -> voice.stop()
@@ -186,6 +187,19 @@ class KeyboardController(
             KeyAction.OpenSettings -> host.openSettings()
             KeyAction.SwitchInputMethod -> host.switchInputMethod()
             KeyAction.HideKeyboard -> host.hideKeyboard()
+        }
+    }
+
+    private fun pasteClip(clip: ClipEntry) {
+        commitAll()
+        if (clip.image == null) {
+            editor.commitText(clip.text)
+            return
+        }
+        val content = clipboard.imageContent(clip)
+        when {
+            content == null -> host.showMessage("画像が見つかりません")
+            !editor.commitImage(content.first, content.second) -> host.showMessage("この入力欄には画像を貼り付けられません")
         }
     }
 
