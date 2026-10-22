@@ -43,9 +43,11 @@ sealed interface KeyAction {
 
     data class PasteClip(val clip: ClipEntry) : KeyAction
 
-    /** クリップボード履歴の項目を、[ClipEntry.key] で指す。 */
-    data class TogglePinClip(val key: String) : KeyAction
-    data class DeleteClip(val key: String) : KeyAction
+    /** クリップボード履歴で選んだ項目（[ClipEntry.key]）をまとめて固定する、または固定を外す。 */
+    data class PinClips(val keys: Set<String>, val pinned: Boolean) : KeyAction
+
+    /** クリップボード履歴で選んだ項目（[ClipEntry.key]）をまとめて消す。 */
+    data class DeleteClips(val keys: Set<String>) : KeyAction
     data object ClearClips : KeyAction
 
     data object StartVoice : KeyAction

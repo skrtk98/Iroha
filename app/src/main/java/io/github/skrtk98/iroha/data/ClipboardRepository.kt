@@ -91,16 +91,23 @@ class ClipboardRepository(
         publish()
     }
 
+    /** 固定数の上限で固定できなかった項目の数を返す。 */
     @MainThread
-    fun togglePin(key: String) = mutate { history.togglePin(key) }
+    fun setPinned(keys: Set<String>, pinned: Boolean): Int {
+        var skipped = 0
+        mutate { skipped = history.setPinned(keys, pinned) }
+        return skipped
+    }
 
     @MainThread
-    fun remove(key: String) = mutate {
+    fun remove(keys: Set<String>) = mutate {
         // 読み込み中の画像があるときだけ、同じ画像が戻らないよう消した時刻を覚える
         if (importsInFlight > 0) {
-            history.entries.firstOrNull { it.key == key }?.image?.let { removedImages[it] = importCount }
+            for (entry in history.entries) {
+                if (entry.key in keys) entry.image?.let { removedImages[it] = importCount }
+            }
         }
-        history.remove(key)
+        history.remove(keys)
     }
 
     @MainThread
