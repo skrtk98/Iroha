@@ -155,11 +155,6 @@ class KeyboardController(
                 val state = _state.value
                 switchFace(if (Faces.isSymbol(state.face)) state.textFace else Faces.symbol(settings.symbolLayout))
             }
-            KeyAction.ToggleLayout -> {
-                val next = Faces.otherLayout(_state.value.face)
-                if (Faces.isSymbol(next)) settings.symbolLayout = Faces.layoutOf(next) else settings.defaultLayout = Faces.layoutOf(next)
-                switchFace(next)
-            }
             is KeyAction.SelectCandidate -> selectCandidate(action.index)
             KeyAction.ToggleCandidateList -> _state.update { it.copy(candidateListExpanded = !it.candidateListExpanded) }
             is KeyAction.ResizeSegment -> if (session?.resizeSegment(action.delta) == true) render()
