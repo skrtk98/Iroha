@@ -114,11 +114,16 @@ class ClipboardRepository(
                     temp.writeText(snapshot)
                     check(temp.renameTo(file))
                 }.onFailure { Log.w(TAG, "failed to save clipboard history", it) }
-                // 消した後に同じ画像がコピーし直されていれば、そのファイルは残す
-                val inUse = _entries.value.mapNotNullTo(HashSet()) { it.image } + pendingImages
-                for (name in removed - inUse) imageFile(context, name).delete()
+                deleteUnusedImages(removed)
             }
         }
+    }
+
+    /** [names] の画像のうち、履歴にも保存中の画像にも無いものを消す。[saveMutex] を持って呼ぶ。 */
+    private fun deleteUnusedImages(names: Set<String>) {
+        // 消した後に同じ画像がコピーし直されていれば、そのファイルは残す
+        val inUse = _entries.value.mapNotNullTo(HashSet()) { it.image } + pendingImages
+        for (name in names - inUse) imageFile(context, name).delete()
     }
 
     /** コピー元から画像を読んで保存し、保存できたら履歴に加える。 */
@@ -146,6 +151,10 @@ class ClipboardRepository(
                 history.add(ClipEntry("", time = time, image = name))
                 publish()
                 pendingImages -= name
+                // 遅れて届き、件数の上限ですぐに外れた画像は残さない
+                if (history.entries.none { it.image == name }) {
+                    appScope.launch(Dispatchers.IO) { saveMutex.withLock { deleteUnusedImages(setOf(name)) } }
+                }
             }
         }
     }
