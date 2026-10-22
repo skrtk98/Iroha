@@ -1,6 +1,7 @@
 package io.github.skrtk98.iroha.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClipboardHistoryTest {
@@ -124,6 +125,30 @@ class ClipboardHistoryTest {
         h.add(ClipEntry("", time = 2, image = "new.png"))
         h.togglePin("image:old.png")
         assertEquals(listOf("image:new.png"), h.entries.map { it.key })
+    }
+
+    @Test
+    fun pinsSeveralAtOnceUpToTheLimit() {
+        val h = ClipboardHistory(maxPinned = 2)
+        h.add("a", 1)
+        h.add("b", 2)
+        h.add("c", 3)
+        // 新しい順に固定し、上限を超えた分は固定しない
+        assertEquals(1, h.setPinned(setOf(key("a"), key("b"), key("c")), pinned = true))
+        assertEquals(listOf("c", "b"), h.entries.filter { it.pinned }.map { it.text })
+
+        assertEquals(0, h.setPinned(setOf(key("b"), key("c")), pinned = false))
+        assertTrue(h.entries.none { it.pinned })
+    }
+
+    @Test
+    fun removesSeveralAtOnce() {
+        val h = ClipboardHistory()
+        h.add("a", 1)
+        h.add("b", 2)
+        h.add("c", 3)
+        h.remove(setOf(key("a"), key("c")))
+        assertEquals(listOf("b"), h.entries.map { it.text })
     }
 
     private fun key(text: String) = ClipEntry(text).key

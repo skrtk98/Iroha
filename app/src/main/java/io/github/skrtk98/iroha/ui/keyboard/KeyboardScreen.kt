@@ -73,6 +73,9 @@ private val MinBarHeight = 36.dp
 /** 倍率 100% のときのキー 1 段の高さ。 */
 private val KeyHeight = 52.dp
 
+/** キーボードの高さを決める段数。数字の段を出しても増やさない。 */
+private const val KeyRows = 4
+
 /**
  * キーボード全体。状態とコールバックだけを受け取るので、プレビューやテストで単体表示できる。
  */
@@ -88,10 +91,8 @@ fun KeyboardScreen(
     // 全体の高さ設定は、ツールバーとキーの両方に同じ倍率で掛ける
     val scale = height.percent / 100f
     val barHeight = (BarHeight * scale).coerceAtLeast(MinBarHeight)
-    val numberRow = state.qwertyNumberRow &&
-        (state.face == KeyboardFace.QwertyKana || state.face == KeyboardFace.QwertyAlphabet)
-    val rows = if (numberRow) 4 + QwertyNumberRowWeight else 4f
-    val keyboardHeight = KeyHeight * rows * scale
+    // どの面・画面でも同じ高さにする。QWERTY の数字の段は、この高さの中で各段を少し低くして収める
+    val keyboardHeight = KeyHeight * KeyRows * scale
     CompositionLocalProvider(LocalKeyHaptics provides state.vibrate, LocalKeyBorders provides state.keyBorders) {
         Column(
             modifier
@@ -104,7 +105,7 @@ fun KeyboardScreen(
                 // 倍率 1% あたりの高さ。ドラッグ量を倍率に直すのに使う。
                 // ツールバーが最小の高さで止まっている間は、キーの段だけが伸び縮みする
                 val barScales = BarHeight * scale > MinBarHeight
-                val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * rows) / 100f
+                val percentHeight = ((if (barScales) BarHeight else 0.dp) + KeyHeight * KeyRows) / 100f
                 ResizeBar(
                     height = draft,
                     percentHeight = percentHeight,
@@ -180,6 +181,7 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             enterKind = state.enterKind,
             spaceKind = state.spaceKind,
             numberRow = state.qwertyNumberRow,
+            moreSymbols = state.moreSymbols,
             onAction = onAction,
             modifier = modifier,
         )
@@ -202,8 +204,9 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
                 onLongClick = { onAction(KeyAction.HideKeyboard) },
                 longClickLabel = "キーボードを閉じる",
             ) { onAction(KeyAction.OpenSettings) }
-            KanaAlphabetButton(state.textFace, onAction, cell)
-            ToolbarButton(R.drawable.ic_content_paste, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
+            // パネル（クリップボード・カーソル移動・音声）では切り替えても何も変わらないので押せなくする
+            KanaAlphabetButton(state.textFace, onAction, cell, enabled = state.panel == Panel.None)
+            ToolbarButton(R.drawable.ic_assignment, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
                 onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
             }
             ToolbarButton(R.drawable.ic_open_with, "カーソル移動", cell, active = state.panel == Panel.Cursor) {
@@ -226,11 +229,17 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
  * 長押しで次の入力方法に切り替える。
  */
 @Composable
-private fun KanaAlphabetButton(textFace: KeyboardFace, onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
+private fun KanaAlphabetButton(
+    textFace: KeyboardFace,
+    onAction: (KeyAction) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
     val alphabet = Faces.isAlphabet(textFace)
     ToolbarButton(
         modifier.semantics { contentDescription = if (alphabet) "日本語に切り替え" else "英字に切り替え" },
         active = false,
+        enabled = enabled,
         onLongClick = { onAction(KeyAction.SwitchInputMethod) },
         longClickLabel = "入力方法を切り替え",
         onClick = { onAction(KeyAction.ToggleKanaAlphabet) },
@@ -251,16 +260,17 @@ fun ToolbarButton(
     longClickLabel: String? = null,
     onClick: () -> Unit,
 ) {
-    ToolbarButton(modifier, active, onLongClick, longClickLabel, onClick) { color ->
+    ToolbarButton(modifier, active, enabled = true, onLongClick, longClickLabel, onClick) { color ->
         Icon(painterResource(icon), contentDescription = description, tint = color)
     }
 }
 
-/** 上部のボタンの枠。[content] には状態に応じた前景色を渡す。 */
+/** 上部のボタンの枠。[content] には状態に応じた前景色を渡す。[enabled] が false ならタップも長押しも受け付けない。 */
 @Composable
 private fun ToolbarButton(
     modifier: Modifier,
     active: Boolean,
+    enabled: Boolean,
     onLongClick: (() -> Unit)?,
     longClickLabel: String?,
     onClick: () -> Unit,
@@ -278,6 +288,7 @@ private fun ToolbarButton(
                 interactionSource = null,
                 // 均等割りで横に広がっても、波紋はアイコンの周りだけに出す
                 indication = ripple(bounded = false, radius = BarHeight / 2),
+                enabled = enabled,
                 role = Role.Button,
                 onLongClickLabel = longClickLabel,
                 onLongClick = onLongClick?.let { action ->
@@ -290,7 +301,13 @@ private fun ToolbarButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        content(if (active) colors.primary else colors.onSurfaceVariant)
+        content(
+            when {
+                !enabled -> colors.onSurfaceVariant.copy(alpha = 0.38f)
+                active -> colors.primary
+                else -> colors.onSurfaceVariant
+            },
+        )
     }
 }
 

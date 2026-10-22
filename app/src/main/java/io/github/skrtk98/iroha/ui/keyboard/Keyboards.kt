@@ -32,14 +32,15 @@ fun BackspaceKey(onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
     IconKey(R.drawable.ic_backspace, "削除", { onAction(KeyAction.Backspace) }, modifier, repeat = true)
 }
 
+/** 空白キー。入力中は変換・次候補になる。どこにあるかすぐ分かるよう、枠の設定によらず色を付ける。 */
 @Composable
 fun SpaceKey(kind: SpaceKind, onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
-    val label = when (kind) {
-        SpaceKind.Space -> "空白"
-        SpaceKind.Convert -> "変換"
-        SpaceKind.NextCandidate -> "次候補"
+    val onClick = { onAction(KeyAction.Space) }
+    when (kind) {
+        SpaceKind.Space -> IconKey(R.drawable.ic_space_bar, "空白", onClick, modifier, KeyStyle.Secondary)
+        SpaceKind.Convert -> TextKey("変換", onClick, modifier, KeyStyle.Secondary, 15.sp)
+        SpaceKind.NextCandidate -> TextKey("次候補", onClick, modifier, KeyStyle.Secondary, 15.sp)
     }
-    TextKey(label, { onAction(KeyAction.Space) }, modifier, style = KeyStyle.Function, fontSize = 15.sp)
 }
 
 @Composable
@@ -185,7 +186,7 @@ private fun ShiftKey(shift: ShiftState, onAction: (KeyAction) -> Unit, modifier:
 }
 
 /** 数字の段の高さ。英字の段 1 段を 1 とした比。 */
-const val QwertyNumberRowWeight = 0.8f
+private const val QwertyNumberRowWeight = 0.8f
 
 /** QWERTY 配列。かな面ではローマ字入力になる。[numberRow] なら日英の面で英字の上に数字の段を出す。 */
 @Composable
@@ -197,12 +198,13 @@ fun QwertyKeyboard(
     enterKind: EnterKind,
     spaceKind: SpaceKind,
     numberRow: Boolean,
+    moreSymbols: Boolean,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val symbols = face == KeyboardFace.QwertySymbols
     val rows: List<List<String>> = if (symbols) {
-        KeyLayouts.symbolRows
+        if (moreSymbols) KeyLayouts.moreSymbolRows else KeyLayouts.symbolRows
     } else {
         KeyLayouts.qwertyRows.map { row -> row.map { if (shift != ShiftState.Off) it.uppercaseChar().toString() else it.toString() } }
     }
@@ -225,7 +227,14 @@ fun QwertyKeyboard(
         }
         Row(rowModifier) {
             if (symbols) {
-                Spacer(Modifier.weight(0.5f))
+                // シフトの位置で記号の 2 ページを切り替える。ラベルは切り替え先を表す
+                TextKey(
+                    if (moreSymbols) "?123" else "=\\<",
+                    { onAction(KeyAction.ToggleMoreSymbols) },
+                    Modifier.weight(1.5f).fillMaxHeight(),
+                    KeyStyle.Function,
+                    14.sp,
+                )
             } else {
                 ShiftKey(shift, onAction, Modifier.weight(1.5f).fillMaxHeight())
             }
@@ -242,6 +251,7 @@ fun QwertyKeyboard(
             )
             // 空白が中央に来るよう、左右に同じ数の記号を置く。日英の切り替えは上部のボタンで行う
             val (left, right) = when {
+                symbols && moreSymbols -> listOf("<") to listOf(">")
                 symbols -> listOf(",") to listOf(".")
                 kana -> listOf("！", "？") to listOf("、", "。")
                 else -> listOf("!", "?") to listOf(",", ".")

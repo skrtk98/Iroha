@@ -28,6 +28,9 @@ sealed interface KeyAction {
     /** 日英 ⇔ 数字・記号。それぞれ設定した配列の面に切り替える。 */
     data object ToggleSymbols : KeyAction
 
+    /** QWERTY の数字・記号の面で、1 ページ目 ⇔ 2 ページ目。 */
+    data object ToggleMoreSymbols : KeyAction
+
     data class SelectCandidate(val index: Int) : KeyAction
     data object ToggleCandidateList : KeyAction
 
@@ -43,9 +46,11 @@ sealed interface KeyAction {
 
     data class PasteClip(val clip: ClipEntry) : KeyAction
 
-    /** クリップボード履歴の項目を、[ClipEntry.key] で指す。 */
-    data class TogglePinClip(val key: String) : KeyAction
-    data class DeleteClip(val key: String) : KeyAction
+    /** クリップボード履歴で選んだ項目（[ClipEntry.key]）をまとめて固定する、または固定を外す。 */
+    data class PinClips(val keys: Set<String>, val pinned: Boolean) : KeyAction
+
+    /** クリップボード履歴で選んだ項目（[ClipEntry.key]）をまとめて消す。 */
+    data class DeleteClips(val keys: Set<String>) : KeyAction
     data object ClearClips : KeyAction
 
     data object StartVoice : KeyAction
@@ -67,5 +72,5 @@ enum class Panel { None, Cursor, Clipboard, Voice }
 
 enum class CursorCommand {
     Left, Right, Up, Down, LineStart, LineEnd,
-    ToggleSelection, SelectAll, Copy, Cut, Paste,
+    ToggleSelection, Deselect, SelectAll, Copy, Cut, Paste,
 }

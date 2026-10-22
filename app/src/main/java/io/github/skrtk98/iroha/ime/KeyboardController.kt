@@ -60,6 +60,9 @@ class KeyboardController(
     /** 数字・パスワードの欄。日本語の面でも変換を使わず、打った文字をそのまま入れる。 */
     private var directInput = false
 
+    /** 入力欄で文字列が選択されているか。選択の解除で、選択が無いのにカーソルを動かさないために使う。 */
+    private var textSelected = false
+
     init {
         scope.launch { collectSuggestions() }
         scope.launch { clipboard.entries.collect { clips -> _state.update { it.copy(clips = clips) } } }
@@ -85,6 +88,7 @@ class KeyboardController(
         // restarting でも別の欄に移っていることがある（Compose の同一ビュー内のフォーカス移動など）ので必ず捨てる
         resetComposition()
         val inputType = info?.inputType ?: 0
+        textSelected = info != null && info.initialSelStart != info.initialSelEnd
         val isNumeric = InputFields.isNumeric(inputType)
         val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType))
         // 数値欄は数字の打ちやすいテンキー（フリック）にする
@@ -96,6 +100,7 @@ class KeyboardController(
                 face = face,
                 textFace = textFace,
                 shift = ShiftState.Off,
+                moreSymbols = false,
                 enterKind = enterKindOf(info),
                 candidateListExpanded = false,
                 panel = if (restarting) it.panel else Panel.None,
@@ -125,6 +130,7 @@ class KeyboardController(
 
     /** エディタ側でカーソルが未確定文字列の外へ動いたら、入力を打ち切る。 */
     fun onSelectionChanged(newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
+        textSelected = newSelStart != newSelEnd
         val s = session ?: return
         if (!s.isComposing) return
         if (candidatesStart < 0 || newSelStart < candidatesStart || newSelEnd > candidatesEnd) {
@@ -145,6 +151,7 @@ class KeyboardController(
             KeyAction.ToggleModifier -> if (session?.toggleModifier() == true) render()
             KeyAction.Shift -> _state.update { it.copy(shift = it.shift.tap()) }
             KeyAction.LockShift -> _state.update { it.copy(shift = ShiftState.Locked) }
+            KeyAction.ToggleMoreSymbols -> _state.update { it.copy(moreSymbols = !it.moreSymbols) }
             KeyAction.ToggleKanaAlphabet -> switchFace(Faces.otherLanguage(_state.value.textFace))
             KeyAction.ToggleSymbols -> {
                 val state = _state.value
@@ -165,8 +172,10 @@ class KeyboardController(
             }
             is KeyAction.Cursor -> cursor(action.command)
             is KeyAction.PasteClip -> pasteClip(action.clip)
-            is KeyAction.TogglePinClip -> clipboard.togglePin(action.key)
-            is KeyAction.DeleteClip -> clipboard.remove(action.key)
+            is KeyAction.PinClips -> if (clipboard.setPinned(action.keys, action.pinned) > 0) {
+                host.showMessage("固定できる数の上限に達したため、一部は固定していません")
+            }
+            is KeyAction.DeleteClips -> clipboard.remove(action.keys)
             KeyAction.ClearClips -> clipboard.clearUnpinned()
             KeyAction.StartVoice -> startVoice()
             KeyAction.StopVoice -> voice.stop()
@@ -274,8 +283,12 @@ class KeyboardController(
             CursorCommand.LineStart -> editor.sendNavigationKey(KeyEvent.KEYCODE_MOVE_HOME, selecting)
             CursorCommand.LineEnd -> editor.sendNavigationKey(KeyEvent.KEYCODE_MOVE_END, selecting)
             CursorCommand.ToggleSelection -> {
-                if (selecting) collapseSelection()
+                if (selecting && textSelected) collapseSelection()
                 _state.update { it.copy(selecting = !selecting) }
+            }
+            CursorCommand.Deselect -> {
+                if (textSelected) collapseSelection()
+                _state.update { it.copy(selecting = false) }
             }
             CursorCommand.SelectAll -> {
                 editor.performContextMenuAction(android.R.id.selectAll)
@@ -303,12 +316,14 @@ class KeyboardController(
      */
     private fun collapseSelection() {
         editor.sendNavigationKey(KeyEvent.KEYCODE_DPAD_RIGHT, select = false)
+        // 欄からの通知を待たずに解除済みとする。続けて押されても、もう一度カーソルを動かさない
+        textSelected = false
     }
 
     private fun switchFace(face: KeyboardFace) {
         commitAll()
         _state.update {
-            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shift = ShiftState.Off)
+            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shift = ShiftState.Off, moreSymbols = false)
         }
     }
 
