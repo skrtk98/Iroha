@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -71,12 +72,11 @@ fun VoicePanel(
             )
         }
         Row(Modifier.fillMaxWidth().height(52.dp)) {
-            TextKey("キーボードに戻る", { onAction(KeyAction.ClosePanel) }, Modifier.weight(1f), KeyStyle.Function, 15.sp)
             when (voice.status) {
-                VoiceStatus.Listening -> IconKey(R.drawable.ic_stop, "停止", { onAction(KeyAction.StopVoice) }, Modifier.weight(1f), KeyStyle.Accent)
+                VoiceStatus.Listening -> IconKey(R.drawable.ic_stop, "停止", { onAction(KeyAction.StopVoice) }, Modifier.weight(1f).fillMaxHeight(), KeyStyle.Accent)
                 VoiceStatus.NeedsPermission ->
-                    TextKey("権限を許可", { onAction(KeyAction.RequestMicPermission) }, Modifier.weight(1f), KeyStyle.Accent, 15.sp)
-                else -> IconKey(R.drawable.ic_mic, "もう一度話す", { onAction(KeyAction.StartVoice) }, Modifier.weight(1f), KeyStyle.Accent)
+                    TextKey("権限を許可", { onAction(KeyAction.RequestMicPermission) }, Modifier.weight(1f).fillMaxHeight(), KeyStyle.Accent, 15.sp)
+                else -> IconKey(R.drawable.ic_mic, "もう一度話す", { onAction(KeyAction.StartVoice) }, Modifier.weight(1f).fillMaxHeight(), KeyStyle.Accent)
             }
         }
     }
