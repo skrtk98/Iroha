@@ -92,5 +92,29 @@ class ClipboardHistoryTest {
         assertEquals(listOf("text:newest", "image:late.png", "text:old"), h.entries.map { it.key })
     }
 
+    @Test
+    fun duplicateImagesKeepTheNewestTime() {
+        val h = ClipboardHistory()
+        h.add(ClipEntry("", time = 5, image = "a.png"))
+        h.add(ClipEntry("", time = 3, image = "a.png"))
+        assertEquals(listOf(5L), h.entries.map { it.time })
+    }
+
+    @Test
+    fun imagesHaveTheirOwnLimits() {
+        val h = ClipboardHistory(maxImages = 2)
+        h.add(ClipEntry("", time = 1, image = "1.png"))
+        h.add("text", 2)
+        h.add(ClipEntry("", time = 3, image = "2.png"))
+        h.add(ClipEntry("", time = 4, image = "3.png"))
+        assertEquals(listOf("image:3.png", "image:2.png", "text:text"), h.entries.map { it.key })
+
+        h.togglePin("image:3.png")
+        h.togglePin("image:2.png")
+        h.add(ClipEntry("", time = 5, image = "4.png"))
+        h.togglePin("image:4.png")
+        assertEquals(listOf("3.png", "2.png"), h.entries.filter { it.pinned }.mapNotNull { it.image })
+    }
+
     private fun key(text: String) = ClipEntry(text).key
 }
