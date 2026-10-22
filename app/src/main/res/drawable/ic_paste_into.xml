@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <!-- 貼り付け。上部のクリップボードのボタンと見分けられるよう、矢印が入力欄へ入る形にする -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M445,120h70v327l103,-103l50,50l-188,188l-188,-188l50,-50l103,103Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M160,520h70v230h500v-230h70v300H160Z" />
+</vector>
