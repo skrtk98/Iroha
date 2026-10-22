@@ -198,12 +198,13 @@ fun QwertyKeyboard(
     enterKind: EnterKind,
     spaceKind: SpaceKind,
     numberRow: Boolean,
+    moreSymbols: Boolean,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val symbols = face == KeyboardFace.QwertySymbols
     val rows: List<List<String>> = if (symbols) {
-        KeyLayouts.symbolRows
+        if (moreSymbols) KeyLayouts.moreSymbolRows else KeyLayouts.symbolRows
     } else {
         KeyLayouts.qwertyRows.map { row -> row.map { if (shift != ShiftState.Off) it.uppercaseChar().toString() else it.toString() } }
     }
@@ -226,7 +227,14 @@ fun QwertyKeyboard(
         }
         Row(rowModifier) {
             if (symbols) {
-                Spacer(Modifier.weight(0.5f))
+                // シフトの位置で記号の 2 ページを切り替える。ラベルは切り替え先を表す
+                TextKey(
+                    if (moreSymbols) "?123" else "=\\<",
+                    { onAction(KeyAction.ToggleMoreSymbols) },
+                    Modifier.weight(1.5f).fillMaxHeight(),
+                    KeyStyle.Function,
+                    14.sp,
+                )
             } else {
                 ShiftKey(shift, onAction, Modifier.weight(1.5f).fillMaxHeight())
             }
@@ -243,6 +251,7 @@ fun QwertyKeyboard(
             )
             // 空白が中央に来るよう、左右に同じ数の記号を置く。日英の切り替えは上部のボタンで行う
             val (left, right) = when {
+                symbols && moreSymbols -> listOf("<") to listOf(">")
                 symbols -> listOf(",") to listOf(".")
                 kana -> listOf("！", "？") to listOf("、", "。")
                 else -> listOf("!", "?") to listOf(",", ".")

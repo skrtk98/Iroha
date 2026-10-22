@@ -65,9 +65,17 @@ object KeyLayouts {
 
     val qwertyRows: List<String> = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
 
+    /** QWERTY の数字・記号の面。3 段目の左端は 2 ページ目への切り替えキー。 */
     val symbolRows: List<List<String>> = listOf(
         "1234567890".map { it.toString() },
         listOf("@", "#", "$", "%", "&", "-", "+", "(", ")", "/"),
-        listOf("*", "\"", "'", ":", ";", "!", "?", "=", "_"),
+        listOf("*", "\"", "'", ":", ";", "!", "?", "="),
+    )
+
+    /** 数字・記号の面の 2 ページ目。1 ページ目に無い記号と、日本語でよく使う記号。 */
+    val moreSymbolRows: List<List<String>> = listOf(
+        listOf("~", "`", "|", "・", "√", "π", "÷", "×", "§", "Δ"),
+        listOf("£", "€", "¥", "¢", "^", "°", "※", "{", "}", "\\"),
+        listOf("_", "[", "]", "「", "」", "…", "〜", "✓"),
     )
 }

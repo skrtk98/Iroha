@@ -100,6 +100,7 @@ class KeyboardController(
                 face = face,
                 textFace = textFace,
                 shift = ShiftState.Off,
+                moreSymbols = false,
                 enterKind = enterKindOf(info),
                 candidateListExpanded = false,
                 panel = if (restarting) it.panel else Panel.None,
@@ -150,6 +151,7 @@ class KeyboardController(
             KeyAction.ToggleModifier -> if (session?.toggleModifier() == true) render()
             KeyAction.Shift -> _state.update { it.copy(shift = it.shift.tap()) }
             KeyAction.LockShift -> _state.update { it.copy(shift = ShiftState.Locked) }
+            KeyAction.ToggleMoreSymbols -> _state.update { it.copy(moreSymbols = !it.moreSymbols) }
             KeyAction.ToggleKanaAlphabet -> switchFace(Faces.otherLanguage(_state.value.textFace))
             KeyAction.ToggleSymbols -> {
                 val state = _state.value
@@ -321,7 +323,7 @@ class KeyboardController(
     private fun switchFace(face: KeyboardFace) {
         commitAll()
         _state.update {
-            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shift = ShiftState.Off)
+            it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shift = ShiftState.Off, moreSymbols = false)
         }
     }
 
