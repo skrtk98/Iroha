@@ -28,9 +28,6 @@ sealed interface KeyAction {
     /** 日英 ⇔ 数字・記号。それぞれ設定した配列の面に切り替える。 */
     data object ToggleSymbols : KeyAction
 
-    /** 表示中の種類（日英か数字・記号か）の配列をフリック ⇔ QWERTY で切り替え、設定にも保存する。 */
-    data object ToggleLayout : KeyAction
-
     data class SelectCandidate(val index: Int) : KeyAction
     data object ToggleCandidateList : KeyAction
 

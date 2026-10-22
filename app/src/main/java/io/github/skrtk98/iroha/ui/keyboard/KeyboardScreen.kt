@@ -202,7 +202,6 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
                 onLongClick = { onAction(KeyAction.HideKeyboard) },
                 longClickLabel = "キーボードを閉じる",
             ) { onAction(KeyAction.OpenSettings) }
-            LayoutSwitchButton(onAction, cell)
             KanaAlphabetButton(state.textFace, onAction, cell)
             ToolbarButton(R.drawable.ic_content_paste, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
                 onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
@@ -222,27 +221,18 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
     }
 }
 
-/** 配列の切り替え。長押しで次の入力方法に切り替える。 */
-@Composable
-private fun LayoutSwitchButton(onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
-    ToolbarButton(
-        R.drawable.ic_keyboard,
-        "配列を切り替え",
-        modifier,
-        onLongClick = { onAction(KeyAction.SwitchInputMethod) },
-        longClickLabel = "入力方法を切り替え",
-    ) { onAction(KeyAction.ToggleLayout) }
-}
-
-/** 日本語 ⇔ 英字。数字・記号の面からも使え、切り替えた日英の面に戻る。今の日英をラベルで示す。 */
+/**
+ * 日本語 ⇔ 英字。数字・記号の面からも使え、切り替えた日英の面に戻る。今の日英をラベルで示す。
+ * 長押しで次の入力方法に切り替える。
+ */
 @Composable
 private fun KanaAlphabetButton(textFace: KeyboardFace, onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
     val alphabet = Faces.isAlphabet(textFace)
     ToolbarButton(
         modifier.semantics { contentDescription = if (alphabet) "日本語に切り替え" else "英字に切り替え" },
         active = false,
-        onLongClick = null,
-        longClickLabel = null,
+        onLongClick = { onAction(KeyAction.SwitchInputMethod) },
+        longClickLabel = "入力方法を切り替え",
         onClick = { onAction(KeyAction.ToggleKanaAlphabet) },
     ) { color ->
         // 線の太いアイコンと並べても細く見えないよう、やや太字にする
@@ -331,8 +321,7 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
         if (state.converting) {
             ToolbarButton(R.drawable.ic_last_page, "文節を伸ばす") { onAction(KeyAction.ResizeSegment(1)) }
         } else {
-            // 入力中はツールバーが隠れるので、配列と日英の切り替えはここに残す
-            LayoutSwitchButton(onAction)
+            // 入力中はツールバーが隠れるので、日英の切り替えはここに残す
             KanaAlphabetButton(state.textFace, onAction)
         }
         ToolbarButton(
