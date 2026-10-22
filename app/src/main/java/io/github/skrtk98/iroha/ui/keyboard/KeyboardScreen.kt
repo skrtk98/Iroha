@@ -202,7 +202,8 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
                 onLongClick = { onAction(KeyAction.HideKeyboard) },
                 longClickLabel = "キーボードを閉じる",
             ) { onAction(KeyAction.OpenSettings) }
-            KanaAlphabetButton(state.textFace, onAction, cell)
+            // パネル（クリップボード・カーソル移動・音声）では切り替えても何も変わらないので押せなくする
+            KanaAlphabetButton(state.textFace, onAction, cell, enabled = state.panel == Panel.None)
             ToolbarButton(R.drawable.ic_assignment, "クリップボード", cell, active = state.panel == Panel.Clipboard) {
                 onAction(if (state.panel == Panel.Clipboard) KeyAction.ClosePanel else KeyAction.OpenPanel(Panel.Clipboard))
             }
@@ -226,11 +227,17 @@ private fun Toolbar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modif
  * 長押しで次の入力方法に切り替える。
  */
 @Composable
-private fun KanaAlphabetButton(textFace: KeyboardFace, onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
+private fun KanaAlphabetButton(
+    textFace: KeyboardFace,
+    onAction: (KeyAction) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
     val alphabet = Faces.isAlphabet(textFace)
     ToolbarButton(
         modifier.semantics { contentDescription = if (alphabet) "日本語に切り替え" else "英字に切り替え" },
         active = false,
+        enabled = enabled,
         onLongClick = { onAction(KeyAction.SwitchInputMethod) },
         longClickLabel = "入力方法を切り替え",
         onClick = { onAction(KeyAction.ToggleKanaAlphabet) },
@@ -251,16 +258,17 @@ fun ToolbarButton(
     longClickLabel: String? = null,
     onClick: () -> Unit,
 ) {
-    ToolbarButton(modifier, active, onLongClick, longClickLabel, onClick) { color ->
+    ToolbarButton(modifier, active, enabled = true, onLongClick, longClickLabel, onClick) { color ->
         Icon(painterResource(icon), contentDescription = description, tint = color)
     }
 }
 
-/** 上部のボタンの枠。[content] には状態に応じた前景色を渡す。 */
+/** 上部のボタンの枠。[content] には状態に応じた前景色を渡す。[enabled] が false ならタップも長押しも受け付けない。 */
 @Composable
 private fun ToolbarButton(
     modifier: Modifier,
     active: Boolean,
+    enabled: Boolean,
     onLongClick: (() -> Unit)?,
     longClickLabel: String?,
     onClick: () -> Unit,
@@ -278,6 +286,7 @@ private fun ToolbarButton(
                 interactionSource = null,
                 // 均等割りで横に広がっても、波紋はアイコンの周りだけに出す
                 indication = ripple(bounded = false, radius = BarHeight / 2),
+                enabled = enabled,
                 role = Role.Button,
                 onLongClickLabel = longClickLabel,
                 onLongClick = onLongClick?.let { action ->
@@ -290,7 +299,13 @@ private fun ToolbarButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        content(if (active) colors.primary else colors.onSurfaceVariant)
+        content(
+            when {
+                !enabled -> colors.onSurfaceVariant.copy(alpha = 0.38f)
+                active -> colors.primary
+                else -> colors.onSurfaceVariant
+            },
+        )
     }
 }
 
