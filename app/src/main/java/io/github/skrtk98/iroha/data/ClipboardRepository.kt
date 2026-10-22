@@ -48,10 +48,13 @@ class ClipboardRepository(
     private var clearCount = 0
 
     /**
-     * 個別に消した画像と消した時刻。それより前にコピーし、読み込み中だった同じ画像を加えないために使う。
-     * 読み込み中の画像が無くなったら空にする。どちらもメインスレッドだけで触る。
+     * 個別に消した画像と、消した時点の [importCount]。それより前にコピーし、読み込み中だった同じ画像を
+     * 加えないために使う。読み込み中の画像が無くなったら空にする。以下はどれもメインスレッドだけで触る。
      */
     private val removedImages = HashMap<String, Long>()
+
+    /** 画像の読み込みを始めた回数。コピーと削除の前後を、時計に頼らず決めるための通し番号。 */
+    private var importCount = 0L
     private var importsInFlight = 0
 
     /** 保存を終えて、まだ履歴に加えていない画像のファイル名。 */
@@ -91,7 +94,7 @@ class ClipboardRepository(
     fun remove(key: String) = mutate {
         // 読み込み中の画像があるときだけ、同じ画像が戻らないよう消した時刻を覚える
         if (importsInFlight > 0) {
-            history.entries.firstOrNull { it.key == key }?.image?.let { removedImages[it] = System.currentTimeMillis() }
+            history.entries.firstOrNull { it.key == key }?.image?.let { removedImages[it] = importCount }
         }
         history.remove(key)
     }
@@ -151,18 +154,17 @@ class ClipboardRepository(
     private fun saveImage(uri: Uri) {
         val time = System.currentTimeMillis()
         val clearsAtCopy = clearCount
-        // 読む許可はクリップボードが変わると取り消されるので、開くのは今のうちに済ませる。開いたものは読み続けられる
-        val input = runCatching { context.contentResolver.openInputStream(uri) }
-            .onFailure { Log.w(TAG, "failed to open clipboard image", it) }
-            .getOrNull() ?: return
+        val order = ++importCount
         importsInFlight++
+        // 読む許可はクリップボードが変わると取り消されるので、すぐに開く。提供元が遅いこともあるため、
+        // メインスレッドでは開かない。開いたものは許可が取り消されても読み続けられる
         appScope.launch(Dispatchers.IO) {
-            val name = runCatching { storeImage(input) }
+            val name = runCatching { context.contentResolver.openInputStream(uri)?.let { storeImage(it) } }
                 .onFailure { Log.w(TAG, "failed to save clipboard image", it) }
                 .getOrNull()
             withContext(Dispatchers.Main) {
                 importsInFlight--
-                if (name != null) addImportedImage(name, time, clearsAtCopy)
+                if (name != null) addImportedImage(name, time, order, clearsAtCopy)
                 // 読み込み中の画像が無くなれば、消した画像の記録はもう要らない
                 if (importsInFlight == 0) removedImages.clear()
             }
@@ -189,9 +191,9 @@ class ClipboardRepository(
     }
 
     @MainThread
-    private fun addImportedImage(name: String, time: Long, clearsAtCopy: Int) {
+    private fun addImportedImage(name: String, time: Long, order: Long, clearsAtCopy: Int) {
         // 読み込み中に履歴や同じ画像が消されたり、記録が止められたりしたら加えない
-        val removedAfterCopy = (removedImages[name] ?: Long.MIN_VALUE) >= time
+        val removedAfterCopy = (removedImages[name] ?: -1L) >= order
         if (clearCount == clearsAtCopy && !removedAfterCopy && settings.clipboardHistory) {
             history.add(ClipEntry("", time = time, image = name))
             publish()
