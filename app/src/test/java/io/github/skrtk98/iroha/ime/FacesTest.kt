@@ -28,4 +28,12 @@ class FacesTest {
         assertEquals(KeyboardFace.FlickAlphabet, Faces.text(KeyboardLayout.Flick, alphabet = true))
         assertEquals(KeyboardFace.QwertyKana, Faces.text(KeyboardLayout.Qwerty, alphabet = false))
     }
+
+    @Test
+    fun otherLanguageKeepsTheLayout() {
+        assertEquals(KeyboardFace.FlickAlphabet, Faces.otherLanguage(KeyboardFace.FlickKana))
+        assertEquals(KeyboardFace.FlickKana, Faces.otherLanguage(KeyboardFace.FlickAlphabet))
+        assertEquals(KeyboardFace.QwertyAlphabet, Faces.otherLanguage(KeyboardFace.QwertyKana))
+        assertEquals(KeyboardFace.QwertyKana, Faces.otherLanguage(KeyboardFace.QwertyAlphabet))
+    }
 }
