@@ -116,5 +116,15 @@ class ClipboardHistoryTest {
         assertEquals(listOf("3.png", "2.png"), h.entries.filter { it.pinned }.mapNotNull { it.image })
     }
 
+    @Test
+    fun unpinningReappliesTheLimits() {
+        val h = ClipboardHistory(maxImages = 1)
+        h.add(ClipEntry("", time = 1, image = "old.png"))
+        h.togglePin("image:old.png")
+        h.add(ClipEntry("", time = 2, image = "new.png"))
+        h.togglePin("image:old.png")
+        assertEquals(listOf("image:new.png"), h.entries.map { it.key })
+    }
+
     private fun key(text: String) = ClipEntry(text).key
 }
