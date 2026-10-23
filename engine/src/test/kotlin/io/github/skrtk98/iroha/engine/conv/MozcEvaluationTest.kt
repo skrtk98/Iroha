@@ -31,7 +31,7 @@ class MozcEvaluationTest {
             }
             val output = converter.convert(f[1]).joinToString("") { it.candidates.first().surface }
             total++
-            if (Regex(f[4]).matches(output) == match) passed++
+            if (Regex(f[4]).matches(output) == match) passed++ else println("mozc evaluation miss: ${f[1]} -> $output (${f[3]} ${f[4]})")
         }
         val rate = passed * 100.0 / total
         println("mozc evaluation: $passed / $total (${"%.1f".format(rate)}%)")

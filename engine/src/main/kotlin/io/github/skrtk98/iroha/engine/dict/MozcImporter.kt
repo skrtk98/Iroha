@@ -122,6 +122,10 @@ class MozcImporter(private val dir: File) {
         return result
     }
 
+    /** 文節の区切りと端のコストの規則 (rules/segmenter.def, rules/boundary.def)。 */
+    fun readSegmentRules(): SegmentRules =
+        SegmentRules.fromMozc(posNames, dataLines("rules/segmenter.def"), dataLines("rules/boundary.def"))
+
     /** 除く語の読みと表記の正規表現。 */
     private fun readDictionaryFilter(): List<Pair<Regex, Regex>> =
         dataLines("dictionary_oss/dictionary_filter.tsv").map { line ->
@@ -181,6 +185,11 @@ class MozcImporter(private val dir: File) {
             "dictionary_manual/domain.txt" to "f6306edfab322a114c705405cd8e3375984a9f08e181a90ae65cc495070598a0",
             "dictionary_manual/places.tsv" to "15cb5d42beb4a530f06599bc64e3a6e6cd11da61728fd0b81e618cef929c9d0e",
             "dictionary_manual/words.tsv" to "e21b52a0bbb983906ee3a7767565087b950e5eb3f246c9a2f5431e643fd69ece",
+            "rules/boundary.def" to "006b8f2c18e112e00be6038110a44f490411ae29926810f40b27a57cfb1696a3",
+            "rules/segmenter.def" to "faf14ec987a12e36c796b35b4f84e210c6a780f5ae52bddc7f80accc58861b21",
+            // 変換精度を測るテストだけで使う
+            "test/quality_regression_test/oss.tsv" to "4ea1ad4b54cfd6ca2e4d62a0d75c922e18144afc36f1e0ceee3e09670264d5c7",
+            "test/quality_regression_test/regression.tsv" to "aa1eef206cd632acdea3b05867f7c7d995ee83889e4817ddffbe83a17768fa21",
         )
 
         val REQUIRED_FILES: List<String> = FILE_SHA256.keys.toList()

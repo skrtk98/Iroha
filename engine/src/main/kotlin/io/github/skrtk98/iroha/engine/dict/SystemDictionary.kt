@@ -25,6 +25,9 @@ class SystemDictionary(buffer: ByteBuffer) {
     val unknownNounId: Int
 
     private val userPosIds: Map<UserPos, Int>
+    private val segmentOffset: Int
+    private val segmentBitsOffset: Int
+    private val rightClassCount: Int
 
     /** ユーザー辞書の品詞に対応する品詞 ID。 */
     fun posId(pos: UserPos): Int = userPosIds.getValue(pos)
@@ -42,6 +45,8 @@ class SystemDictionary(buffer: ByteBuffer) {
         unknownNounId = buf.getInt(36)
         dataLength = buf.getInt(40)
         val userPosCount = buf.getInt(44)
+        val leftClassCount = buf.getInt(48)
+        rightClassCount = buf.getInt(52)
 
         var offset = DictionaryFormat.HEADER_SIZE
         codec = CharCodec(CharArray(charCount) { buf.getChar(offset + it * 2) })
@@ -52,6 +57,9 @@ class SystemDictionary(buffer: ByteBuffer) {
         val userIds = IntArray(userPosCount) { buf.getShort(offset + it * 2).toInt() and 0xFFFF }
         userPosIds = UserPos.entries.associateWith { userIds.getOrElse(it.ordinal) { unknownNounId } }
         offset += userPosCount * 2
+        segmentOffset = offset
+        segmentBitsOffset = offset + posCount * 8
+        offset = segmentBitsOffset + (leftClassCount * rightClassCount + 7) / 8
         matrixOffset = offset
         matrixWords = (matrixDim + 63) / 64
         offset = matrixOffset + buf.getInt(matrixOffset + matrixDim * 4)
@@ -62,6 +70,25 @@ class SystemDictionary(buffer: ByteBuffer) {
     }
 
     fun posClass(id: Int): PosClass = posClasses.getOrElse(id) { PosClass.Content }
+
+    /** rid の語と lid の語の間で文節を区切るか (mozc の segmenter.def)。 */
+    fun isBoundary(rid: Int, lid: Int): Boolean {
+        val count = posClasses.size
+        if (rid >= count || lid >= count) return true
+        val left = segmentValue(0, rid)
+        val right = segmentValue(1, lid)
+        val index = left * rightClassCount + right
+        return buf.get(segmentBitsOffset + (index ushr 3)).toInt() and (1 shl (index and 7)) != 0
+    }
+
+    /** 文節の先頭に lid の語が来るときに足すコスト (mozc の boundary.def)。 */
+    fun prefixPenalty(lid: Int): Int = if (lid < posClasses.size) segmentValue(2, lid) else 0
+
+    /** 文節の末尾に rid の語が来るときに足すコスト。 */
+    fun suffixPenalty(rid: Int): Int = if (rid < posClasses.size) segmentValue(3, rid) else 0
+
+    private fun segmentValue(table: Int, id: Int): Int =
+        buf.getShort(segmentOffset + (table * posClasses.size + id) * 2).toInt() and 0xFFFF
 
     /** 左の語の rid から右の語の lid へ接続するコスト。 */
     fun connectionCost(rid: Int, lid: Int): Int {

@@ -53,7 +53,7 @@ class Converter(
                 var bestCost: Int
                 var bestNext: Node? = null
                 if (node.end == end) {
-                    bestCost = dictionary.connectionCost(node.word.rid, rightLid)
+                    bestCost = dictionary.connectionCost(node.word.rid, rightLid) + dictionary.suffixPenalty(node.word.rid)
                 } else {
                     bestCost = Int.MAX_VALUE
                     for (m in nodesAt[node.end - start]) {
@@ -82,7 +82,7 @@ class Converter(
                 last = cur
                 cur = next[cur]
             }
-            val cost = dictionary.connectionCost(leftRid, node.word.lid) + c
+            val cost = dictionary.connectionCost(leftRid, node.word.lid) + dictionary.prefixPenalty(node.word.lid) + c
             scored.add(Candidate(surface.toString(), segmentReading, cost, node.word.lid, last.word.rid))
         }
         scored.sortBy { it.cost }
@@ -167,7 +167,9 @@ class Converter(
             for (node in nodesAt[pos - start]) {
                 val prevs = if (pos == start) null else endingAt[pos - start]
                 if (prevs == null) {
-                    node.total = dictionary.connectionCost(leftRid, node.word.lid) + node.word.cost
+                    // mozc と同じく、変換する範囲の先頭と末尾の語には boundary.def のコストを足す
+                    node.total = dictionary.connectionCost(leftRid, node.word.lid) + node.word.cost +
+                        dictionary.prefixPenalty(node.word.lid)
                 } else {
                     for (p in prevs) {
                         val t = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost
@@ -184,7 +186,7 @@ class Converter(
         var bestLast: Node? = null
         var bestTotal = Int.MAX_VALUE
         for (node in endingAt[end - start]) {
-            val t = node.total + dictionary.connectionCost(node.word.rid, rightLid)
+            val t = node.total + dictionary.connectionCost(node.word.rid, rightLid) + dictionary.suffixPenalty(node.word.rid)
             if (t < bestTotal) {
                 bestTotal = t
                 bestLast = node
@@ -246,7 +248,7 @@ class Converter(
         else -> 4
     }
 
-    /** 自立語・記号の手前で文節を切る。付属語は前の文節に、接頭辞の次の語は接頭辞の文節に付ける。 */
+    /** mozc の segmenter.def に従い、隣り合う語の品詞から文節を切る。 */
     private fun splitSegments(reading: String, path: List<Node>): List<Segment> {
         val segments = ArrayList<Segment>()
         var segStart = 0
@@ -254,15 +256,8 @@ class Converter(
         var firstLid = 0
         var lastRid = 0
         var cost = 0
-        var previousClass: PosClass? = null
         for ((index, node) in path.withIndex()) {
-            val posClass = dictionary.posClass(node.word.lid)
-            val startsSegment = index == 0 || when (posClass) {
-                PosClass.Functional -> previousClass == PosClass.Symbol
-                PosClass.Content, PosClass.Prefix -> previousClass != PosClass.Prefix
-                PosClass.Symbol -> true
-            }
-            if (startsSegment && index > 0) {
+            if (index > 0 && dictionary.isBoundary(path[index - 1].word.rid, node.word.lid)) {
                 segments.add(
                     Segment(
                         reading.substring(segStart, node.start),
@@ -277,7 +272,6 @@ class Converter(
             surface.append(node.word.surface)
             lastRid = node.word.rid
             cost += node.word.cost
-            previousClass = dictionary.posClass(node.word.rid)
         }
         if (path.isNotEmpty()) {
             val r = reading.substring(segStart)

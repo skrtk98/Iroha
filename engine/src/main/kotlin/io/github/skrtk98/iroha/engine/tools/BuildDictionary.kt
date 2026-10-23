@@ -54,7 +54,14 @@ fun main(args: Array<String>) {
     val (matrix, dim) = importer.readMatrix()
     output.parentFile?.mkdirs()
     output.outputStream().use { out ->
-        DictionaryBuilder(importer.posClasses, matrix, dim, importer.unknownNounId, importer.userPosIds).write(entries, out)
+        DictionaryBuilder(
+            importer.posClasses,
+            matrix,
+            dim,
+            importer.unknownNounId,
+            importer.userPosIds,
+            importer.readSegmentRules(),
+        ).write(entries, out)
     }
     println("wrote ${output.length()} bytes, ${entries.size} entries")
 }
