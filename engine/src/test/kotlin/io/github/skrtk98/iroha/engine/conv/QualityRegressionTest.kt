@@ -18,7 +18,10 @@ class QualityRegressionTest {
         val dictionary = TestDictionary.instance
         val dir = File(System.getProperty("iroha.mozcDir") ?: "", "${MozcImporter.MOZC_COMMIT}/test/quality_regression_test")
         assumeTrue(dictionary != null && dir.exists())
-        val converter = Converter(dictionary!!)
+        // 重みを試すときは -Diroha.lmWeight=… を付けて実行する
+        val weight = System.getProperty("iroha.lmWeight")?.toFloatOrNull() ?: Converter.LANGUAGE_MODEL_WEIGHT
+        println("quality: language model ${if (TestDictionary.languageModel == null) "off" else "weight $weight"}")
+        val converter = Converter(dictionary!!, languageModel = TestDictionary.languageModel, languageModelWeight = weight)
         val items = listOf("oss.tsv", "regression.tsv").flatMap { name ->
             File(dir, name).readLines().filter { it.isNotBlank() && !it.startsWith("#") }.map(::parse)
         }

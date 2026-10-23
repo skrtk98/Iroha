@@ -27,13 +27,33 @@ val buildDictionary = tasks.register<JavaExec>("buildDictionary") {
     args(mozcCacheDir, dictionaryFile.get().asFile.absolutePath, dictionaryMaxCost.get())
 }
 
+// 文字の並びの言語モデル。コーパスは固定版を取得できないため、作ったモデルをリポジトリに置く。
+// 作り直すときは lm/README.md の手順でコーパスを用意し、-Piroha.corpus=<ファイル,...> を付けて実行する
+val languageModelFile = layout.projectDirectory.file("lm/iroha.lm")
+
+tasks.register<JavaExec>("buildLanguageModel") {
+    description = "Builds lm/iroha.lm from the corpus files given by -Piroha.corpus."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.skrtk98.iroha.engine.tools.BuildLanguageModelKt")
+    maxHeapSize = "3g"
+    // コーパスを渡さなければ、ツールが使い方を出して失敗する
+    val output = languageModelFile.asFile.absolutePath
+    val corpus = providers.gradleProperty("iroha.corpus").map { it.split(',') }.orElse(emptyList())
+    argumentProviders.add(CommandLineArgumentProvider { listOf(output, "2") + corpus.get() })
+}
+
 configurations.consumable("dictionary")
 artifacts.add("dictionary", dictionaryFile) { builtBy(buildDictionary) }
+artifacts.add("dictionary", languageModelFile)
 
 tasks.test {
     // 実辞書を使う結合テストのため
     dependsOn(buildDictionary)
     systemProperty("iroha.dictionary", dictionaryFile.get().asFile.absolutePath)
     systemProperty("iroha.mozcDir", mozcCacheDir)
+    systemProperty("iroha.languageModel", languageModelFile.asFile.absolutePath)
+    inputs.file(languageModelFile)
+    // 言語モデルの重みを試すとき用 (-Diroha.lmWeight=…)
+    providers.systemProperty("iroha.lmWeight").orNull?.let { systemProperty("iroha.lmWeight", it) }
     maxHeapSize = "1g"
 }

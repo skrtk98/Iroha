@@ -4,6 +4,7 @@ import io.github.skrtk98.iroha.engine.dict.ExtraKind
 import io.github.skrtk98.iroha.engine.dict.PosClass
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
 import io.github.skrtk98.iroha.engine.dict.WordEntry
+import io.github.skrtk98.iroha.engine.lm.LanguageModel
 import io.github.skrtk98.iroha.engine.text.Kana
 
 /**
@@ -15,6 +16,10 @@ class Converter(
     private val sources: List<WordSource> = emptyList(),
     /** 絵文字を候補に出してよいか。端末のフォントで表示できない絵文字を除くのに使う。 */
     private val isDisplayable: (String) -> Boolean = { true },
+    /** 表記の文字の並びの自然さ。あれば辞書のコストに足して、文として自然な並びを選ぶ。 */
+    private val languageModel: LanguageModel? = null,
+    /** 言語モデルの -ln 確率を辞書のコストに直す倍率。 */
+    private val languageModelWeight: Float = LANGUAGE_MODEL_WEIGHT,
 ) {
     private class Node(
         val start: Int,
@@ -23,7 +28,77 @@ class Converter(
     ) {
         var total = Int.MAX_VALUE
         var prev: Node? = null
+
+        /** 言語モデルで、語の 3 文字目以降に掛かるコスト。前の語によらないので一度だけ求める。NaN は未計算。 */
+        var innerSequenceCost = Float.NaN
     }
+
+    /**
+     * 1 回の変換の間だけ、言語モデルの 3-gram のコストを覚えておく。同じ並びを何度も引くため。
+     * 語の境目をまたぐのは先頭の 2 文字だけなので、辺ごとにはその 2 文字分だけ求める。
+     */
+    private inner class SequenceScorer(private val model: LanguageModel) {
+        // 開番地法の表。キーは 3 文字を詰めた値 (0 は空き)、値はコスト
+        private var keys = LongArray(1024)
+        private var values = FloatArray(1024)
+        private var size = 0
+
+        private fun cost(a: Char, b: Char, c: Char): Float {
+            val key = (a.code.toLong() shl 32) or (b.code.toLong() shl 16) or c.code.toLong() or (1L shl 48)
+            var i = slot(key, keys.size)
+            while (true) {
+                val k = keys[i]
+                if (k == key) return values[i]
+                if (k == 0L) break
+                i = (i + 1) and (keys.size - 1)
+            }
+            val value = model.cost(a, b, c)
+            if ((size + 1) * 2 > keys.size) grow()
+            insert(key, value)
+            return value
+        }
+
+        private fun slot(key: Long, capacity: Int): Int = ((key * -0x61c8864680b583ebL) ushr 40).toInt() and (capacity - 1)
+
+        private fun insert(key: Long, value: Float) {
+            var i = slot(key, keys.size)
+            while (keys[i] != 0L) i = (i + 1) and (keys.size - 1)
+            keys[i] = key
+            values[i] = value
+            size++
+        }
+
+        private fun grow() {
+            val oldKeys = keys
+            val oldValues = values
+            keys = LongArray(oldKeys.size * 2)
+            values = FloatArray(oldKeys.size * 2)
+            size = 0
+            for (i in oldKeys.indices) if (oldKeys[i] != 0L) insert(oldKeys[i], oldValues[i])
+        }
+
+        /** [previous] (無ければ文頭) の後に [node] を置くコスト。 */
+        fun cost(previous: Node?, node: Node): Int {
+            val text = node.word.surface
+            if (text.isEmpty()) return 0
+            val before = previous?.word?.surface.orEmpty()
+            val a = before.getOrNull(before.length - 2)?.let(LanguageModel::normalize) ?: LanguageModel.BOS
+            val b = before.lastOrNull()?.let(LanguageModel::normalize) ?: LanguageModel.BOS
+            val c0 = LanguageModel.normalize(text[0])
+            var sum = cost(a, b, c0)
+            if (text.length >= 2) sum += cost(b, c0, LanguageModel.normalize(text[1]))
+            if (node.innerSequenceCost.isNaN()) {
+                var inner = 0f
+                for (i in 2 until text.length) {
+                    inner += cost(LanguageModel.normalize(text[i - 2]), LanguageModel.normalize(text[i - 1]), LanguageModel.normalize(text[i]))
+                }
+                node.innerSequenceCost = inner
+            }
+            return ((sum + node.innerSequenceCost) * languageModelWeight).toInt()
+        }
+    }
+
+    private fun sequenceScorer(): SequenceScorer? = languageModel?.let { SequenceScorer(it) }
 
     /**
      * [reading] 全体を変換して文節に分ける。各文節の候補は先頭の 1 件だけを持つ。
@@ -48,6 +123,7 @@ class Converter(
         limit: Int = 200,
     ): List<Candidate> {
         val nodesAt = buildLattice(reading, start, end)
+        val scorer = sequenceScorer()
         // best[node] = node から区間末尾までの最小コスト（node 自身を含む）
         val best = HashMap<Node, Int>()
         val next = HashMap<Node, Node?>()
@@ -61,7 +137,8 @@ class Converter(
                     bestCost = Int.MAX_VALUE
                     for (m in nodesAt[node.end - start]) {
                         val c = best[m] ?: continue
-                        val total = dictionary.connectionCost(node.word.rid, m.word.lid) + c
+                        val total = dictionary.connectionCost(node.word.rid, m.word.lid) + c +
+                            (scorer?.cost(node, m) ?: 0)
                         if (total < bestCost) {
                             bestCost = total
                             bestNext = m
@@ -278,6 +355,7 @@ class Converter(
 
     private fun bestPath(reading: String, start: Int, end: Int, leftRid: Int, rightLid: Int): List<Node> {
         val nodesAt = buildLattice(reading, start, end)
+        val scorer = sequenceScorer()
         val endingAt = Array(end - start + 1) { ArrayList<Node>() }
         for (pos in start until end) {
             for (node in nodesAt[pos - start]) {
@@ -285,10 +363,11 @@ class Converter(
                 if (prevs == null) {
                     // mozc と同じく、変換する範囲の先頭と末尾の語には boundary.def のコストを足す
                     node.total = dictionary.connectionCost(leftRid, node.word.lid) + node.word.cost +
-                        dictionary.prefixPenalty(node.word.lid)
+                        dictionary.prefixPenalty(node.word.lid) + (scorer?.cost(null, node) ?: 0)
                 } else {
                     for (p in prevs) {
-                        val t = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost
+                        val t = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost +
+                            (scorer?.cost(p, node) ?: 0)
                         if (t < node.total) {
                             node.total = t
                             node.prev = p
@@ -399,6 +478,9 @@ class Converter(
     companion object {
         const val BOS_EOS = 0
         private const val UNKNOWN_COST = 12000
+
+        /** mozc の品質回帰テストで最もよく当たった値。 */
+        const val LANGUAGE_MODEL_WEIGHT = 350f
         private const val RUN_COST = 4000
         private const val PREDICT_SCAN = 3000
         private const val PREDICT_SCAN_SHORT = 800
