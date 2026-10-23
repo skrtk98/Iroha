@@ -218,6 +218,11 @@ class ComposingSession(
         previousSurface = null
     }
 
+    /** 変換せずに続けて入れた [text] を、次の変換の文脈にする。 */
+    fun continueContext(text: String) {
+        previousSurface = text
+    }
+
     fun clear() {
         buffer = StringBuilder()
         caret = 0

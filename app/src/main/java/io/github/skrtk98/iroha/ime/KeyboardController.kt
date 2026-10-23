@@ -71,8 +71,12 @@ class KeyboardController(
     /** 続きの候補を引くための、直前に確定した文字列。続きの候補を選ぶとつなげていく。 */
     private var committedTail = ""
 
-    /** 続きの候補を出した後の最初のカーソル位置。そこから動いたら候補を閉じる。 */
-    private var followUpCursor: Int? = null
+    /**
+     * 変換して確定した後のカーソル位置。そこから動いたら、続きの候補を閉じ、確定した語を次の変換の文脈にしない。
+     * 確定の直後は位置が届くのを待つ ([awaitingCommitCursor])。
+     */
+    private var commitCursor: Int? = null
+    private var awaitingCommitCursor = false
 
     init {
         scope.launch { collectSuggestions() }
@@ -142,19 +146,19 @@ class KeyboardController(
     /** エディタ側でカーソルが未確定文字列の外へ動いたら、入力を打ち切る。 */
     fun onSelectionChanged(newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
         textSelected = newSelStart != newSelEnd
-        if (followUpJob != null) {
-            // 確定で動いた位置を覚え、そこから入力欄をタップするなどして動いたら続きの候補を閉じる
-            val anchor = followUpCursor
-            if (anchor == null && !textSelected) {
-                followUpCursor = newSelStart
-            } else if (anchor != newSelStart || textSelected) {
-                clearFollowUps()
-                // 確定した文の後ろから離れたので、次の変換の文脈にしない
-                session?.forgetContext()
-            }
-        }
         val s = session ?: return
-        if (!s.isComposing) return
+        if (!s.isComposing) {
+            if (awaitingCommitCursor && !textSelected) {
+                commitCursor = newSelStart
+                awaitingCommitCursor = false
+            } else if (commitCursor.let { it != null && (it != newSelStart || textSelected) }) {
+                // 入力欄のタップやカーソルキーで確定した語の後ろから離れた
+                commitCursor = null
+                clearFollowUps()
+                s.forgetContext()
+            }
+            return
+        }
         if (candidatesStart < 0 || newSelStart < candidatesStart || newSelEnd > candidatesEnd) {
             s.clear()
             editor.finishComposing()
@@ -390,6 +394,7 @@ class KeyboardController(
 
     /** 変換して確定した文字列を入れ、その続きの候補を出す。 */
     private fun commitConverted(text: String) {
+        awaitCommitCursor()
         editor.commitText(text)
         committedTail = text
         showFollowUps()
@@ -397,16 +402,22 @@ class KeyboardController(
 
     private fun selectFollowUp(index: Int) {
         val candidate = followUps.getOrNull(index) ?: return
+        awaitCommitCursor()
+        session?.continueContext(candidate.surface)
         editor.commitText(candidate.surface)
         committedTail = (committedTail + candidate.surface).takeLast(FOLLOW_UP_TAIL)
         showFollowUps()
+    }
+
+    private fun awaitCommitCursor() {
+        commitCursor = null
+        awaitingCommitCursor = true
     }
 
     private fun showFollowUps() {
         val converter = engine?.converter ?: return
         val tail = committedTail
         followUpJob?.cancel()
-        followUpCursor = null
         followUpJob = scope.launch {
             val list = withContext(Dispatchers.Default) { converter.zeroQuery(tail) }
             followUps = list
@@ -418,7 +429,6 @@ class KeyboardController(
         if (followUpJob == null) return
         followUpJob?.cancel()
         followUpJob = null
-        followUpCursor = null
         followUps = emptyList()
         _state.update { it.copy(followUps = emptyList()) }
     }
@@ -427,6 +437,7 @@ class KeyboardController(
     fun commitAll() {
         val s = session ?: return
         if (!s.isComposing) return
+        awaitCommitCursor()
         editor.commitText(s.commit())
         render()
     }
@@ -435,6 +446,8 @@ class KeyboardController(
         clearFollowUps()
         session?.clear()
         session?.forgetContext()
+        commitCursor = null
+        awaitingCommitCursor = false
         hasPreedit = false
         suggestions = emptyList()
         suggestionRequests.value = null
