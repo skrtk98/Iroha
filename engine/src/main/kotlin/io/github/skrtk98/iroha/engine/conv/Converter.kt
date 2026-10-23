@@ -133,6 +133,7 @@ class Converter(
         leftSurface: String = "",
     ): List<Candidate> {
         val nodesAt = buildLattice(reading, start, end)
+        // 後ろから求めるので、1 文字の語の前の語は分からない。その分の文脈は文頭として近似する
         val scorer = sequenceScorer()
         // best[node] = node から区間末尾までの最小コスト（node 自身を含む）
         val best = HashMap<Node, Int>()

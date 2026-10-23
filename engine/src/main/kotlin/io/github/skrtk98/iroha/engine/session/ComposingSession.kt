@@ -147,7 +147,11 @@ class ComposingSession(
         if (newLength == segs[focus].reading.length) return true
         val leftRid = segs.getOrNull(focus - 1)?.current?.rid ?: Converter.BOS_EOS
         val end = start + newLength
-        val resized = ConvSegment(reading.substring(start, end), converter.candidates(reading, start, end, leftRid))
+        val leftSurface = segs.getOrNull(focus - 1)?.current?.surface ?: previousSurface.orEmpty()
+        val resized = ConvSegment(
+            reading.substring(start, end),
+            converter.candidates(reading, start, end, leftRid, leftSurface = leftSurface),
+        )
         resized.expanded = true
         val rest = if (end < reading.length) {
             toConvSegments(converter.convert(reading.substring(end), resized.current.rid), resized.current.surface)
