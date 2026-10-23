@@ -59,8 +59,8 @@ android {
     }
     androidResources {
         localeFilters += listOf("ja", "en")
-        // 辞書は APK から直接 mmap するため圧縮しない
-        noCompress += "dic"
+        // 辞書と言語モデルは APK から直接 mmap するため圧縮しない
+        noCompress += listOf("dic", "lm")
     }
     dependenciesInfo {
         // APK に Google 署名の依存情報ブロックを入れない。F-Droid が中身を検証できず、再現ビルドの妨げになる。

@@ -1,0 +1,12 @@
+Iroha の言語モデル (iroha.lm) は、次のコーパスから文字の並びの統計を求めて作っています。
+文そのものは含みません。
+
+Tatoeba (https://tatoeba.org/)
+  日本語の文。Tatoeba の投稿者による。
+  Creative Commons Attribution 2.0 France (CC BY 2.0 FR)
+  https://creativecommons.org/licenses/by/2.0/fr/
+
+ウィキニュース 日本語版 (https://ja.wikinews.org/)
+  記事本文。ウィキニュースの寄稿者による。
+  Creative Commons Attribution 4.0 International (CC BY 4.0)
+  https://creativecommons.org/licenses/by/4.0/

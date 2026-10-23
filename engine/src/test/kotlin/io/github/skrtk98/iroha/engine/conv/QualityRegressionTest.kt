@@ -18,7 +18,10 @@ class QualityRegressionTest {
         val dictionary = TestDictionary.instance
         val dir = File(System.getProperty("iroha.mozcDir") ?: "", "${MozcImporter.MOZC_COMMIT}/test/quality_regression_test")
         assumeTrue(dictionary != null && dir.exists())
-        val converter = Converter(dictionary!!)
+        // 重みを試すときは -Diroha.lmWeight=… を付けて実行する
+        val weight = System.getProperty("iroha.lmWeight")?.toFloatOrNull() ?: Converter.LANGUAGE_MODEL_WEIGHT
+        println("quality: language model ${if (TestDictionary.languageModel == null) "off" else "weight $weight"}")
+        val converter = Converter(dictionary!!, languageModel = TestDictionary.languageModel, languageModelWeight = weight)
         val items = listOf("oss.tsv", "regression.tsv").flatMap { name ->
             File(dir, name).readLines().filter { it.isNotBlank() && !it.startsWith("#") }.map(::parse)
         }
@@ -64,7 +67,9 @@ class QualityRegressionTest {
             val leftRid = segments.getOrNull(i - 1)?.candidates?.first()?.rid ?: Converter.BOS_EOS
             val rightLid = segments.getOrNull(i + 1)?.candidates?.first()?.lid ?: Converter.BOS_EOS
             val first = segment.candidates.first()
-            lists.add(listOf(first) + converter.candidates(key, start, end, leftRid, rightLid).filter { it.surface != first.surface })
+            val leftSurface = segments.getOrNull(i - 1)?.candidates?.first()?.surface.orEmpty()
+            val list = converter.candidates(key, start, end, leftRid, rightLid, leftSurface = leftSurface)
+            lists.add(listOf(first) + list.filter { it.surface != first.surface })
             start = end
         }
         fun rank(rest: String, index: Int): Int {

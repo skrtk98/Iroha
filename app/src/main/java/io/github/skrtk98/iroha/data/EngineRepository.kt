@@ -5,6 +5,7 @@ import android.graphics.Paint
 import android.util.Log
 import io.github.skrtk98.iroha.engine.conv.Converter
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
+import io.github.skrtk98.iroha.engine.lm.LanguageModel
 import io.github.skrtk98.iroha.engine.user.LearningStore
 import io.github.skrtk98.iroha.engine.user.UserDictionary
 import io.github.skrtk98.iroha.engine.user.UserDictionaryTsv
@@ -26,10 +27,11 @@ import java.util.concurrent.ConcurrentHashMap
 /** 読み込み済みの変換エンジン一式。 */
 class Engine(
     val dictionary: SystemDictionary,
+    languageModel: LanguageModel,
     val userDictionary: UserDictionary,
     val learning: LearningStore,
 ) {
-    val converter = Converter(dictionary, listOf(learning, userDictionary), EmojiSupport::canShow)
+    val converter = Converter(dictionary, listOf(learning, userDictionary), EmojiSupport::canShow, languageModel)
 }
 
 /** 端末のフォントで表示できる絵文字か。新しい絵文字は古い端末では豆腐になるので候補から外す。 */
@@ -80,11 +82,8 @@ class EngineRepository(
     }
 
     private fun open(): Engine {
-        val dictionary = context.assets.openFd(DICTIONARY_ASSET).use { fd ->
-            FileInputStream(fd.fileDescriptor).channel.use { channel ->
-                SystemDictionary(channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.length))
-            }
-        }
+        val dictionary = SystemDictionary(mapAsset(DICTIONARY_ASSET))
+        val languageModel = LanguageModel(mapAsset(LANGUAGE_MODEL_ASSET))
         val userDictionary = UserDictionary(dictionary::posId)
         if (userDictionaryFile.exists()) {
             // 上限は新しく追加するときだけ効かせる。保存済みの辞書が上限を超えていても起動は止めない
@@ -93,7 +92,7 @@ class EngineRepository(
         }
         val learning = LearningStore()
         if (learningFile.exists()) learning.deserialize(learningFile.readText())
-        return Engine(dictionary, userDictionary, learning)
+        return Engine(dictionary, languageModel, userDictionary, learning)
     }
 
     /**
@@ -131,6 +130,13 @@ class EngineRepository(
         }
     }
 
+    /** 無圧縮で APK に入れた asset を mmap する。 */
+    private fun mapAsset(name: String) = context.assets.openFd(name).use { fd ->
+        FileInputStream(fd.fileDescriptor).channel.use { channel ->
+            channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.length)
+        }
+    }
+
     /** 一時ファイルに書いてから置き換える。一時ファイル名は書き込みごとに変え、途中で失敗したら消す。 */
     private fun writeAtomically(file: File, text: String) {
         val temp = File.createTempFile(file.name, ".tmp", file.parentFile)
@@ -145,5 +151,6 @@ class EngineRepository(
     private companion object {
         const val TAG = "EngineRepository"
         const val DICTIONARY_ASSET = "iroha.dic"
+        const val LANGUAGE_MODEL_ASSET = "iroha.lm"
     }
 }

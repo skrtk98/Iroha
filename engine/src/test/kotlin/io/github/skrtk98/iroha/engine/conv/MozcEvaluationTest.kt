@@ -1,5 +1,6 @@
 package io.github.skrtk98.iroha.engine.conv
 
+import io.github.skrtk98.iroha.engine.TestDictionary
 import io.github.skrtk98.iroha.engine.dict.MozcImporter
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
 import org.junit.Assert.assertTrue
@@ -17,7 +18,10 @@ class MozcEvaluationTest {
         val evalFile = File(System.getProperty("iroha.mozcDir") ?: "", "${MozcImporter.MOZC_COMMIT}/dictionary_oss/evaluation.tsv")
         assumeTrue(dictPath != null && File(dictPath).exists() && evalFile.exists())
         val converter = RandomAccessFile(dictPath, "r").use { file ->
-            Converter(SystemDictionary(file.channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())))
+            Converter(
+                SystemDictionary(file.channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())),
+                languageModel = TestDictionary.languageModel,
+            )
         }
         var total = 0
         var passed = 0

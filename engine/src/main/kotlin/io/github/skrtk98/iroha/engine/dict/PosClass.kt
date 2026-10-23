@@ -13,6 +13,9 @@ enum class PosClass {
 
     /** 記号。単独で文節になる。 */
     Symbol,
+
+    /** 数 (名詞,数)。自立語と同じく扱い、候補には別の書き方 (3 と 三 など) を足す。 */
+    Number,
     ;
 
     companion object {
@@ -26,6 +29,7 @@ enum class PosClass {
                 minor == "接尾" || minor == "非自立" -> Functional
                 major == "接頭詞" -> Prefix
                 major == "記号" -> Symbol
+                major == "名詞" && minor == "数" -> Number
                 else -> Content
             }
         }
