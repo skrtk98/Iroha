@@ -1,6 +1,7 @@
 package io.github.skrtk98.iroha.data
 
 import android.content.Context
+import android.graphics.Paint
 import android.util.Log
 import io.github.skrtk98.iroha.engine.conv.Converter
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
@@ -20,6 +21,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.nio.channels.FileChannel
+import java.util.concurrent.ConcurrentHashMap
 
 /** 読み込み済みの変換エンジン一式。 */
 class Engine(
@@ -27,7 +29,22 @@ class Engine(
     val userDictionary: UserDictionary,
     val learning: LearningStore,
 ) {
-    val converter = Converter(dictionary, listOf(learning, userDictionary))
+    val converter = Converter(dictionary, listOf(learning, userDictionary), EmojiSupport::canShow)
+}
+
+/** 端末のフォントで表示できる絵文字か。新しい絵文字は古い端末では豆腐になるので候補から外す。 */
+private object EmojiSupport {
+    private val paint = Paint()
+    private val cache = ConcurrentHashMap<String, Boolean>()
+
+    fun canShow(text: String): Boolean {
+        // hasGlyph は 1 つの字形で描けるかを見るので、普通の文字列には使えない。絵文字を含むときだけ確かめる
+        if (text.codePoints().noneMatch { Character.getType(it) == Character.OTHER_SYMBOL.toInt() }) return true
+        return cache.getOrPut(text) {
+            // Paint はスレッドセーフではない。候補は複数のスレッドから求める
+            synchronized(paint) { paint.hasGlyph(text) }
+        }
+    }
 }
 
 /**

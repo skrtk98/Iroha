@@ -48,6 +48,8 @@ data class KeyboardUiState(
     val candidates: List<String> = emptyList(),
     val selectedCandidate: Int = -1,
     val candidateListExpanded: Boolean = false,
+    /** 確定した語の後に続けて出す候補 (ありがとう → ございます など)。入力していないときだけ出す。 */
+    val followUps: List<String> = emptyList(),
     val enterKind: EnterKind = EnterKind.Newline,
     val spaceKind: SpaceKind = SpaceKind.Space,
     /** キーボード全体の高さの倍率（百分率）。 */
