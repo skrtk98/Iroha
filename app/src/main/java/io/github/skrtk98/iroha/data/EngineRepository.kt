@@ -38,13 +38,21 @@ private object EmojiSupport {
     private val cache = ConcurrentHashMap<String, Boolean>()
 
     fun canShow(text: String): Boolean {
-        // hasGlyph は 1 つの字形で描けるかを見るので、普通の文字列には使えない。絵文字を含むときだけ確かめる
-        if (text.codePoints().noneMatch { Character.getType(it) == Character.OTHER_SYMBOL.toInt() }) return true
+        // hasGlyph は 1 つの字形で描けるかを見るので、普通の文字列には使えない。絵文字を含むときだけ確かめる。
+        // 1️⃣ のような囲み数字は、数字に異体字セレクタと囲み記号が続く
+        if (text.codePoints().noneMatch(::isEmojiPart)) return true
         return cache.getOrPut(text) {
             // Paint はスレッドセーフではない。候補は複数のスレッドから求める
             synchronized(paint) { paint.hasGlyph(text) }
         }
     }
+
+    private fun isEmojiPart(codePoint: Int): Boolean =
+        Character.getType(codePoint) == Character.OTHER_SYMBOL.toInt() ||
+            Character.getType(codePoint) == Character.ENCLOSING_MARK.toInt() ||
+            codePoint == EMOJI_PRESENTATION
+
+    private const val EMOJI_PRESENTATION = 0xFE0F
 }
 
 /**
