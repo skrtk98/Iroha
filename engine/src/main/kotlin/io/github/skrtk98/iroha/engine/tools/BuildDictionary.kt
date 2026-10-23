@@ -28,6 +28,7 @@ fun main(args: Array<String>) {
     cacheDir.mkdirs()
     for (name in MozcImporter.REQUIRED_FILES) {
         val target = File(cacheDir, name)
+        target.parentFile.mkdirs()
         val expected = MozcImporter.FILE_SHA256.getValue(name)
         if (target.exists()) {
             check(sha256(target) == expected) {
@@ -36,7 +37,7 @@ fun main(args: Array<String>) {
             continue
         }
         println("downloading $name")
-        val temp = File(cacheDir, "$name.part")
+        val temp = File(target.parentFile, "${target.name}.part")
         URI(MozcImporter.rawUrl(name)).toURL().openStream().use { input ->
             Files.copy(input, temp.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }

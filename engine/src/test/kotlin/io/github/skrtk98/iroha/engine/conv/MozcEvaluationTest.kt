@@ -14,7 +14,7 @@ class MozcEvaluationTest {
     @Test
     fun conversionAccuracy() {
         val dictPath = System.getProperty("iroha.dictionary")
-        val evalFile = File(System.getProperty("iroha.mozcDir") ?: "", "${MozcImporter.MOZC_COMMIT}/evaluation.tsv")
+        val evalFile = File(System.getProperty("iroha.mozcDir") ?: "", "${MozcImporter.MOZC_COMMIT}/dictionary_oss/evaluation.tsv")
         assumeTrue(dictPath != null && File(dictPath).exists() && evalFile.exists())
         val converter = RandomAccessFile(dictPath, "r").use { file ->
             Converter(SystemDictionary(file.channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())))
