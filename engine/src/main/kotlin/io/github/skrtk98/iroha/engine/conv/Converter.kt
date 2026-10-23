@@ -250,7 +250,7 @@ class Converter(
         val maxReadings = if (reading.length <= 1) PREDICT_SCAN_SHORT else PREDICT_SCAN
         val systemPredicted = ArrayList<WordEntry>()
         dictionary.predictiveSearch(reading, maxReadings) { w ->
-            if (w.reading.length > reading.length && dictionary.posClass(w.lid) == PosClass.Content) {
+            if (w.reading.length > reading.length && dictionary.posClass(w.lid).let { it == PosClass.Content || it == PosClass.Number }) {
                 systemPredicted.add(w)
             }
         }

@@ -61,13 +61,17 @@ internal object NumberVariants {
             val digit = digitOf(c)
             when {
                 digit >= 0 -> {
-                    current = (if (current < 0) 0 else current) * 10 + digit
-                    if (current > MAX_VALUE) return null
+                    val base = if (current < 0) 0 else current
+                    // 掛ける前に確かめ、桁あふれで負の数になるのを防ぐ
+                    if (base > (MAX_VALUE - digit) / 10) return null
+                    current = base * 10 + digit
                 }
                 c in SMALL_UNITS -> {
                     val unit = SMALL_UNITS.getValue(c)
                     if (unit >= lastSmall) return null
-                    section += (if (current < 0) 1 else current) * unit
+                    val count = if (current < 0) 1 else current
+                    if (count > MAX_VALUE / unit) return null
+                    section += count * unit
                     current = -1
                     lastSmall = unit
                 }

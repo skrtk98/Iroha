@@ -23,6 +23,8 @@ class NumberVariantsTest {
     fun rejectsBrokenUnitOrder() {
         assertNull(NumberVariants.parse("千千"))
         assertNull(NumberVariants.parse("万億"))
+        assertNull(NumberVariants.parse("99999999999999999999"))
+        assertNull(NumberVariants.parse("9999999999999999千"))
     }
 
     @Test
