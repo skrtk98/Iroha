@@ -149,6 +149,8 @@ class KeyboardController(
                 followUpCursor = newSelStart
             } else if (anchor != newSelStart || textSelected) {
                 clearFollowUps()
+                // 確定した文の後ろから離れたので、次の変換の文脈にしない
+                session?.forgetContext()
             }
         }
         val s = session ?: return
@@ -432,6 +434,7 @@ class KeyboardController(
     private fun resetComposition() {
         clearFollowUps()
         session?.clear()
+        session?.forgetContext()
         hasPreedit = false
         suggestions = emptyList()
         suggestionRequests.value = null
