@@ -100,7 +100,7 @@ class Converter(
             ranked.putIfAbsent(candidate.surface, candidate)
         }
         // 辞書の上位の後に記号と絵文字を挟み、顔文字と単漢字は辞書の候補の後ろに付ける
-        val dictionaryCandidates = ranked.values.toList()
+        val dictionaryCandidates = withNumberVariants(ranked.values)
         val ordered = dictionaryCandidates.take(CANDIDATES_BEFORE_SYMBOLS) +
             extraCandidates(ExtraKind.Symbol, segmentReading) +
             extraCandidates(ExtraKind.Emoji, segmentReading) +
@@ -117,6 +117,15 @@ class Converter(
             result.putIfAbsent(fallback.surface, fallback)
         }
         return result.values.toList()
+    }
+
+    /** 数で始まる候補のすぐ後に、その数の別の書き方 (3千円 → 三千円, 3000円, 3,000円 …) を置く。 */
+    private fun withNumberVariants(candidates: Collection<Candidate>): List<Candidate> = buildList {
+        for (candidate in candidates) {
+            add(candidate)
+            if (dictionary.posClass(candidate.lid) != PosClass.Number) continue
+            NumberVariants.of(candidate.surface).forEach { add(candidate.copy(surface = it)) }
+        }
     }
 
     /** [kind] のデータのうち読みが [reading] の語を候補にする。 */
