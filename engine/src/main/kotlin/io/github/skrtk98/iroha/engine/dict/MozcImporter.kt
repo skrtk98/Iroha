@@ -54,7 +54,7 @@ class MozcImporter(private val dir: File) {
      */
     fun readEntries(maxContentCost: Int): List<WordEntry> {
         val classes = posClasses
-        val main = readMainDictionary()
+        val main = mainDictionary
         val aux = readAuxDictionary(main)
         val manual = readManualWords(main, aux)
         val pruned = main.filter { classes[it.lid] != PosClass.Content || it.cost < maxContentCost }
@@ -64,6 +64,9 @@ class MozcImporter(private val dir: File) {
             .filterNot { word -> filter.any { (key, value) -> key.matches(word.reading) && value.matches(word.surface) } }
             .distinct()
     }
+
+    /** dictionary00〜09 のすべての語。 */
+    val mainDictionary: List<WordEntry> by lazy { readMainDictionary() }
 
     private fun readMainDictionary(): List<WordEntry> {
         val result = ArrayList<WordEntry>(1_300_000)
@@ -122,6 +125,79 @@ class MozcImporter(private val dir: File) {
         return result
     }
 
+    /**
+     * 候補に足すだけのデータ。読みに [ExtraKind.marker] を付けて辞書に入れる。
+     * コストは同じ読みの中での並び順に使い、元のファイルの順を保つ。
+     */
+    fun readExtras(): List<WordEntry> {
+        val main = mainDictionary
+        val result = ArrayList<WordEntry>()
+        val symbolId = posId("記号,一般,")
+        var order = 0
+        fun add(kind: ExtraKind, reading: String, surface: String, lid: Int = symbolId, rid: Int = lid, cost: Int = order++) {
+            if (reading.isEmpty() || surface.isEmpty() || reading.length >= SystemDictionary.MAX_READING_CHARS) return
+            result.add(WordEntry(kind.key(reading), surface, lid, rid, cost))
+        }
+        fun readings(field: String) = field.split(' ').filter { it.isNotEmpty() }
+
+        for (line in dataLines("single_kanji/single_kanji.tsv")) {
+            val (reading, kanji) = line.split('\t')
+            kanji.codePoints().forEach { add(ExtraKind.SingleKanji, reading, String(Character.toChars(it)), unknownNounId) }
+        }
+        // 記号はそれ自体も読みになる (、 で ，を出すなど)。categorized.tsv には # そのものの行があるので、
+        // 注釈は "# " で始まる行だけとみなす
+        for (line in tableLines("symbol/symbol.tsv").drop(1)) {
+            val fields = line.split('\t')
+            if (fields.size >= 3) readings(fields[2]).forEach { add(ExtraKind.Symbol, it, fields[1]) }
+        }
+        for (line in tableLines("symbol/categorized.tsv")) {
+            val fields = line.split('\t')
+            if (fields.size >= 3) readings(fields[2]).forEach { add(ExtraKind.Symbol, it, fields[0]) }
+        }
+        for (line in tableLines("emoticon/emoticon.tsv")) {
+            val fields = line.split('\t')
+            if (fields.size >= 2) readings(fields[1]).forEach { add(ExtraKind.Emoticon, it, fields[0]) }
+        }
+        for (line in tableLines("emoticon/categorized.tsv")) {
+            val fields = line.split('\t')
+            if (fields.size >= 3) readings(fields[2]).forEach { add(ExtraKind.Emoticon, it, fields[0]) }
+        }
+        for (path in listOf("emoji/emoji_data.tsv", "emoji/manual_emoji_data.tsv")) {
+            for (line in tableLines(path)) {
+                val fields = line.split('\t')
+                if (fields.size >= 3) readings(fields[2]).forEach { add(ExtraKind.Emoji, it, fields[1]) }
+            }
+        }
+        // 読み間違いは、正しい読みの同じ表記から品詞とコストを写す
+        val byKey = main.groupBy { it.reading to it.surface }
+        for (line in dataLines("dictionary_oss/reading_correction.tsv")) {
+            val (value, error, correct) = line.split('\t')
+            val base = byKey[correct to value]?.minByOrNull { it.cost }
+            if (base != null) {
+                add(ExtraKind.ReadingCorrection, error, value, base.lid, base.rid, base.cost + READING_CORRECTION_PENALTY)
+            } else {
+                add(ExtraKind.ReadingCorrection, error, value, unknownNounId)
+            }
+        }
+        for (line in dataLines("dictionary_oss/suffix.txt")) {
+            val word = parseDictionaryLine(line) ?: continue
+            add(ExtraKind.Suffix, word.reading, word.surface, word.lid, word.rid, word.cost)
+        }
+        for ((path, kind) in listOf("zero_query/zero_query.def" to ExtraKind.ZeroQuery, "zero_query/zero_query_number.def" to ExtraKind.ZeroQueryNumber)) {
+            for (line in dataLines(path)) {
+                val (trigger, candidates) = line.split('\t')
+                candidates.split(',').forEachIndexed { index, candidate -> add(kind, trigger, candidate, cost = index) }
+            }
+        }
+        for (line in dataLines("dictionary_oss/collocation.txt")) add(ExtraKind.Collocation, line, line)
+        for (line in dataLines("dictionary_oss/suggestion_filter.txt")) add(ExtraKind.SuggestionFilter, line, line)
+        return result.distinctBy { listOf(it.reading, it.surface) }
+    }
+
+    /** 表の形のファイルの行。注釈 ("# " で始まる行) と空行を除く。 */
+    private fun tableLines(path: String): List<String> =
+        file(path).readLines(Charsets.UTF_8).filter { it.isNotBlank() && !it.startsWith("# ") && !it.startsWith("\t") }
+
     /** 文節の区切りと端のコストの規則 (rules/segmenter.def, rules/boundary.def)。 */
     fun readSegmentRules(): SegmentRules =
         SegmentRules.fromMozc(posNames, dataLines("rules/segmenter.def"), dataLines("rules/boundary.def"))
@@ -138,6 +214,9 @@ class MozcImporter(private val dir: File) {
         const val MOZC_COMMIT = "0136c35782536cb43d710575c311cd4185982738"
 
         private const val ID_DEF = "dictionary_oss/id.def"
+
+        /** 読み間違いの候補は、正しい読みの語より少し出にくくする。 */
+        private const val READING_CORRECTION_PENALTY = 1000
 
         /** dictionary_manual の品詞名。mozc の gen_aux_dictionary.py の pos_alias と同じ。 */
         private val MANUAL_POS = mapOf(
@@ -187,6 +266,19 @@ class MozcImporter(private val dir: File) {
             "dictionary_manual/words.tsv" to "e21b52a0bbb983906ee3a7767565087b950e5eb3f246c9a2f5431e643fd69ece",
             "rules/boundary.def" to "006b8f2c18e112e00be6038110a44f490411ae29926810f40b27a57cfb1696a3",
             "rules/segmenter.def" to "faf14ec987a12e36c796b35b4f84e210c6a780f5ae52bddc7f80accc58861b21",
+            "dictionary_oss/collocation.txt" to "45fe60749f79e44bd7255b771522e963fd9d2a54005e4b2cf19d5e8204253812",
+            "dictionary_oss/reading_correction.tsv" to "08066c2af7e6d3eba0ff7b1a9e10d876436b639d036680d1f7f91a8306ec22d7",
+            "dictionary_oss/suffix.txt" to "37ace4c057615a10c2e06e19e57010916390b0709f0156d1ee17ce82f3272dd9",
+            "dictionary_oss/suggestion_filter.txt" to "2c8fccb65be739cadfa3524921584e84914c96b9977bd1d42834d79700eaa6b5",
+            "emoji/emoji_data.tsv" to "cd469564e1cc4e5ec4dc4035cde38568e86da4528849ca7374c96bf628160572",
+            "emoji/manual_emoji_data.tsv" to "6901754c35226e9602f2d1a2111b9d1ce80ce500c30056c19585ddcfdaf3659d",
+            "emoticon/categorized.tsv" to "4497c16a706de418b05e73eaddbce13e5d3390e7c2de71200b28c0c97ae5c4fc",
+            "emoticon/emoticon.tsv" to "366558b380bef07dda26822c9100d1efabee539f7961b2c6363d4614c4a762c4",
+            "single_kanji/single_kanji.tsv" to "bfa6a4be1319a144f770ba281dfc04091a05320e334357f949b293dc5f9c3d0c",
+            "symbol/categorized.tsv" to "af8a5e36f90e6a916e965d281bfb86172adff09a3a95e3f1d04fffea7ee5f079",
+            "symbol/symbol.tsv" to "bc68b032a195f203dccba6f95667424199ba9b185fee2be64eeaa959253c097a",
+            "zero_query/zero_query.def" to "9d17ce3b48bebd55726a7e5509c65d28549c9e6612b289b15f6cdcf1e26545ec",
+            "zero_query/zero_query_number.def" to "d64204ea29fe6062950621255d9aa7650ac8f1c211a6fcb03ebe57f7716917ec",
             // 変換精度を測るテストだけで使う
             "test/quality_regression_test/oss.tsv" to "4ea1ad4b54cfd6ca2e4d62a0d75c922e18144afc36f1e0ceee3e09670264d5c7",
             "test/quality_regression_test/regression.tsv" to "aa1eef206cd632acdea3b05867f7c7d995ee83889e4817ddffbe83a17768fa21",

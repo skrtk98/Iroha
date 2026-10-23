@@ -50,7 +50,7 @@ fun main(args: Array<String>) {
     }
 
     val importer = MozcImporter(cacheDir)
-    val entries = importer.readEntries(maxCost)
+    val entries = importer.readEntries(maxCost) + importer.readExtras()
     val (matrix, dim) = importer.readMatrix()
     output.parentFile?.mkdirs()
     output.outputStream().use { out ->

@@ -141,6 +141,15 @@ class SystemDictionary(buffer: ByteBuffer) {
         return ArrayList<WordEntry>().also { cursor.readEntries(reading.toString(), it) }
     }
 
+    /** 候補に足すだけのデータ ([ExtraKind]) のうち、読みが [reading] の語。並びは元のデータの順。 */
+    fun extras(kind: ExtraKind, reading: CharSequence): List<WordEntry> =
+        exactSearch(kind.key(reading)).map { it.copy(reading = it.reading.substring(1)) }
+
+    /** [kind] のデータで読みが [prefix] で始まる語。 */
+    fun predictExtras(kind: ExtraKind, prefix: CharSequence, maxReadings: Int, consumer: (WordEntry) -> Unit) {
+        predictiveSearch(kind.key(prefix), maxReadings) { consumer(it.copy(reading = it.reading.substring(1))) }
+    }
+
     /**
      * 読みが [prefix] で始まる語を最大 [maxReadings] 個の読みまで走査して返す。
      * 読みの昇順に走査するため、件数が多い短い接頭辞では打ち切られる。

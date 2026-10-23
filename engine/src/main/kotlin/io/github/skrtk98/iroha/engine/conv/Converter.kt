@@ -1,5 +1,6 @@
 package io.github.skrtk98.iroha.engine.conv
 
+import io.github.skrtk98.iroha.engine.dict.ExtraKind
 import io.github.skrtk98.iroha.engine.dict.PosClass
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
 import io.github.skrtk98.iroha.engine.dict.WordEntry
@@ -12,6 +13,8 @@ import io.github.skrtk98.iroha.engine.text.Kana
 class Converter(
     private val dictionary: SystemDictionary,
     private val sources: List<WordSource> = emptyList(),
+    /** 絵文字を候補に出してよいか。端末のフォントで表示できない絵文字を除くのに使う。 */
+    private val isDisplayable: (String) -> Boolean = { true },
 ) {
     private class Node(
         val start: Int,
@@ -29,7 +32,7 @@ class Converter(
     fun convert(reading: String, leftRid: Int = BOS_EOS): List<Segment> {
         if (reading.isEmpty()) return emptyList()
         val path = bestPath(reading, 0, reading.length, leftRid, BOS_EOS)
-        return splitSegments(reading, path)
+        return applyCollocations(reading, splitSegments(reading, path), leftRid)
     }
 
     /**
@@ -42,7 +45,7 @@ class Converter(
         end: Int,
         leftRid: Int = BOS_EOS,
         rightLid: Int = BOS_EOS,
-        limit: Int = 60,
+        limit: Int = 200,
     ): List<Candidate> {
         val nodesAt = buildLattice(reading, start, end)
         // best[node] = node から区間末尾までの最小コスト（node 自身を含む）
@@ -91,8 +94,21 @@ class Converter(
             .map { Candidate(it, segmentReading, UNKNOWN_COST, fallbackId, fallbackId) }
         // ひらがな・カタカナを必ず残せるよう、その分の枠を空けておく
         val dictionaryLimit = (limit - fallbacks.size).coerceAtLeast(0)
-        val result = LinkedHashMap<String, Candidate>()
+        val ranked = LinkedHashMap<String, Candidate>()
         for (candidate in scored) {
+            if (ranked.size >= DICTIONARY_CANDIDATES) break
+            ranked.putIfAbsent(candidate.surface, candidate)
+        }
+        // 辞書の上位の後に記号と絵文字を挟み、顔文字と単漢字は辞書の候補の後ろに付ける
+        val dictionaryCandidates = ranked.values.toList()
+        val ordered = dictionaryCandidates.take(CANDIDATES_BEFORE_SYMBOLS) +
+            extraCandidates(ExtraKind.Symbol, segmentReading) +
+            extraCandidates(ExtraKind.Emoji, segmentReading) +
+            dictionaryCandidates.drop(CANDIDATES_BEFORE_SYMBOLS) +
+            extraCandidates(ExtraKind.Emoticon, segmentReading) +
+            extraCandidates(ExtraKind.SingleKanji, segmentReading)
+        val result = LinkedHashMap<String, Candidate>()
+        for (candidate in ordered) {
             if (result.size >= dictionaryLimit) break
             result.putIfAbsent(candidate.surface, candidate)
         }
@@ -103,6 +119,87 @@ class Converter(
         return result.values.toList()
     }
 
+    /** [kind] のデータのうち読みが [reading] の語を候補にする。 */
+    private fun extraCandidates(kind: ExtraKind, reading: String): List<Candidate> =
+        dictionary.extras(kind, reading)
+            .filter { kind != ExtraKind.Emoji || isDisplayable(it.surface) }
+            .map { it.toCandidate() }
+
+    /**
+     * 確定した [committed] の次に出す候補 (mozc のゼロクエリ)。末尾が数字なら助数詞などを、
+     * そうでなければ末尾に一致するいちばん長いきっかけの語に続く言葉を返す。
+     */
+    fun zeroQuery(committed: String, limit: Int = 30): List<Candidate> {
+        val digits = committed.takeLastWhile { it in '0'..'9' || it in '０'..'９' }
+            .map { if (it in '０'..'９') '0' + (it - '０') else it }
+            .joinToString("")
+        val words = if (digits.isNotEmpty()) {
+            dictionary.extras(ExtraKind.ZeroQueryNumber, digits)
+                .ifEmpty { dictionary.extras(ExtraKind.ZeroQueryNumber, ZERO_QUERY_DEFAULT) }
+        } else {
+            (minOf(committed.length, SystemDictionary.MAX_READING_CHARS) downTo 1).asSequence()
+                .map { dictionary.extras(ExtraKind.ZeroQuery, committed.takeLast(it)) }
+                .firstOrNull { it.isNotEmpty() }
+                .orEmpty()
+        }
+        return words.asSequence()
+            .filter { isDisplayable(it.surface) }
+            .map { Candidate(it.surface, "", it.cost, it.lid, it.rid) }
+            .distinctBy { it.surface }
+            .take(limit)
+            .toList()
+    }
+
+    /** collocation.txt の並び。数が少ないのですべて持っておく。 */
+    private val collocations: List<String> by lazy {
+        val all = ArrayList<String>()
+        dictionary.predictExtras(ExtraKind.Collocation, "", Int.MAX_VALUE) { all.add(it.surface) }
+        all
+    }
+
+    /**
+     * mozc の collocation.txt に載っている並び (こっちに来い など) になるよう、隣の文節と合わせて
+     * 候補を選び直す。並びの片側がもう選ばれていて、もう片側が候補にあるときだけ入れ替える。
+     */
+    private fun applyCollocations(reading: String, segments: List<Segment>, leftRid: Int): List<Segment> {
+        if (segments.size < 2 || collocations.isEmpty()) return segments
+        val result = segments.toMutableList()
+        var start = 0
+        for (i in 0 until result.size - 1) {
+            val end = start + result[i].reading.length
+            val nextEnd = end + result[i + 1].reading.length
+            val current = result[i].candidates.first()
+            val next = result[i + 1].candidates.first()
+            val left = result.getOrNull(i - 1)?.candidates?.first()?.rid ?: leftRid
+            val right = result.getOrNull(i + 2)?.candidates?.first()?.lid ?: BOS_EOS
+            for (collocation in collocations) {
+                if (collocation == current.surface + next.surface) break
+                val nextCandidate = if (collocation.startsWith(current.surface)) {
+                    val wanted = collocation.substring(current.surface.length)
+                    candidates(reading, end, nextEnd, current.rid, right).firstOrNull { it.surface == wanted }
+                } else {
+                    null
+                }
+                if (nextCandidate != null) {
+                    result[i + 1] = Segment(result[i + 1].reading, listOf(nextCandidate))
+                    break
+                }
+                val currentCandidate = if (collocation.endsWith(next.surface)) {
+                    val wanted = collocation.removeSuffix(next.surface)
+                    candidates(reading, start, end, left, next.lid).firstOrNull { it.surface == wanted }
+                } else {
+                    null
+                }
+                if (currentCandidate != null) {
+                    result[i] = Segment(result[i].reading, listOf(currentCandidate))
+                    break
+                }
+            }
+            start = end
+        }
+        return result
+    }
+
     /**
      * 入力中の読みに対する予測候補。先頭は全体の変換結果。
      */
@@ -110,7 +207,9 @@ class Converter(
         if (reading.isEmpty()) return emptyList()
         val result = LinkedHashMap<String, Candidate>()
         fun add(c: Candidate) {
-            if (result.size < limit) result.putIfAbsent(c.surface, c)
+            if (result.size >= limit || c.surface in result) return
+            if (dictionary.extras(ExtraKind.SuggestionFilter, c.surface).isNotEmpty()) return
+            result[c.surface] = c
         }
 
         // 学習・ユーザー辞書の完全一致を最優先
@@ -134,6 +233,8 @@ class Converter(
         dictionary.exactSearch(reading)
             .filter { dictionary.posClass(it.lid) != PosClass.Functional }
             .forEach { add(it.toCandidate()) }
+        // よくある読み間違いには正しい表記を出す (おどさん → お土産)
+        dictionary.extras(ExtraKind.ReadingCorrection, reading).forEach { add(it.toCandidate()) }
 
         val predicted = ArrayList<WordEntry>()
         for (source in sources) predicted += source.predict(reading, PREDICT_SOURCE_LIMIT)
@@ -147,6 +248,12 @@ class Converter(
         systemPredicted.sortBy { it.cost }
         predicted += systemPredicted.take(limit)
         predicted.forEach { add(it.toCandidate()) }
+        // 語に続く言い回し (しなきゃいけない など)
+        val suffixes = ArrayList<WordEntry>()
+        dictionary.predictExtras(ExtraKind.Suffix, reading, PREDICT_SCAN_SHORT) { suffixes.add(it) }
+        suffixes.sortedBy { it.cost }.take(SUFFIX_LIMIT).forEach { add(it.toCandidate()) }
+        extraCandidates(ExtraKind.Symbol, reading).forEach(::add)
+        extraCandidates(ExtraKind.Emoji, reading).forEach(::add)
 
         add(Candidate(reading, reading, UNKNOWN_COST, dictionary.unknownNounId, dictionary.unknownNounId))
         add(
@@ -287,5 +394,13 @@ class Converter(
         private const val PREDICT_SCAN = 3000
         private const val PREDICT_SCAN_SHORT = 800
         private const val PREDICT_SOURCE_LIMIT = 10
+
+        /** 文節の候補のうち、辞書から出す数の上限。 */
+        private const val DICTIONARY_CANDIDATES = 60
+
+        /** 文節の候補で、記号・絵文字より前に置く辞書の候補の数。 */
+        private const val CANDIDATES_BEFORE_SYMBOLS = 3
+        private const val SUFFIX_LIMIT = 5
+        private const val ZERO_QUERY_DEFAULT = "default"
     }
 }
