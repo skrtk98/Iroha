@@ -67,7 +67,9 @@ class QualityRegressionTest {
             val leftRid = segments.getOrNull(i - 1)?.candidates?.first()?.rid ?: Converter.BOS_EOS
             val rightLid = segments.getOrNull(i + 1)?.candidates?.first()?.lid ?: Converter.BOS_EOS
             val first = segment.candidates.first()
-            lists.add(listOf(first) + converter.candidates(key, start, end, leftRid, rightLid).filter { it.surface != first.surface })
+            val leftSurface = segments.getOrNull(i - 1)?.candidates?.first()?.surface.orEmpty()
+            val list = converter.candidates(key, start, end, leftRid, rightLid, leftSurface = leftSurface)
+            lists.add(listOf(first) + list.filter { it.surface != first.surface })
             start = end
         }
         fun rank(rest: String, index: Int): Int {

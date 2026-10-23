@@ -278,7 +278,8 @@ class ComposingSession(
         val leftRid = segs.getOrNull(index - 1)?.current?.rid ?: Converter.BOS_EOS
         val rightLid = segs.getOrNull(index + 1)?.current?.lid ?: Converter.BOS_EOS
         val current = seg.current
-        val list = converter.candidates(reading, start, start + seg.reading.length, leftRid, rightLid)
+        val leftSurface = segs.getOrNull(index - 1)?.current?.surface ?: previousSurface.orEmpty()
+        val list = converter.candidates(reading, start, start + seg.reading.length, leftRid, rightLid, leftSurface = leftSurface)
         seg.candidates = listOf(current) + list.filter { it.surface != current.surface }
         seg.selected = 0
         seg.expanded = true

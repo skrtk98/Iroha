@@ -77,13 +77,22 @@ class Converter(
             for (i in oldKeys.indices) if (oldKeys[i] != 0L) insert(oldKeys[i], oldValues[i])
         }
 
-        /** [previous] (無ければ文頭) の後に [node] を置くコスト。 */
-        fun cost(previous: Node?, node: Node): Int {
+        /**
+         * [previous] の後に [node] を置くコスト。[previous] が 1 文字なら、その前の語 ([Node.prev]) から
+         * もう 1 文字を借りる。前の語が無ければ [before] (前の文節の表記など。空なら文頭) を文脈にする。
+         */
+        fun cost(previous: Node?, node: Node, before: String = ""): Int {
+            if (previous == null) return cost(before.getOrNull(before.length - 2), before.lastOrNull(), node)
+            val surface = previous.word.surface
+            val a = if (surface.length >= 2) surface[surface.length - 2] else previous.prev?.word?.surface?.lastOrNull()
+            return cost(a, surface.lastOrNull(), node)
+        }
+
+        private fun cost(first: Char?, second: Char?, node: Node): Int {
             val text = node.word.surface
             if (text.isEmpty()) return 0
-            val before = previous?.word?.surface.orEmpty()
-            val a = before.getOrNull(before.length - 2)?.let(LanguageModel::normalize) ?: LanguageModel.BOS
-            val b = before.lastOrNull()?.let(LanguageModel::normalize) ?: LanguageModel.BOS
+            val a = first?.let(LanguageModel::normalize) ?: LanguageModel.BOS
+            val b = second?.let(LanguageModel::normalize) ?: LanguageModel.BOS
             val c0 = LanguageModel.normalize(text[0])
             var sum = cost(a, b, c0)
             if (text.length >= 2) sum += cost(b, c0, LanguageModel.normalize(text[1]))
@@ -112,7 +121,7 @@ class Converter(
 
     /**
      * 文節 [start]..[end] の候補を良い順に返す。[leftRid] は前の文節の右端品詞、
-     * [rightLid] は次の文節の左端品詞（末尾なら文末）。
+     * [rightLid] は次の文節の左端品詞（末尾なら文末）。[leftSurface] は前の文節の表記で、言語モデルの文脈に使う。
      */
     fun candidates(
         reading: String,
@@ -121,6 +130,7 @@ class Converter(
         leftRid: Int = BOS_EOS,
         rightLid: Int = BOS_EOS,
         limit: Int = 200,
+        leftSurface: String = "",
     ): List<Candidate> {
         val nodesAt = buildLattice(reading, start, end)
         val scorer = sequenceScorer()
@@ -162,7 +172,8 @@ class Converter(
                 last = cur
                 cur = next[cur]
             }
-            val cost = dictionary.connectionCost(leftRid, node.word.lid) + dictionary.prefixPenalty(node.word.lid) + c
+            val cost = dictionary.connectionCost(leftRid, node.word.lid) + dictionary.prefixPenalty(node.word.lid) + c +
+                (scorer?.cost(null, node, leftSurface) ?: 0)
             scored.add(Candidate(surface.toString(), segmentReading, cost, node.word.lid, last.word.rid))
         }
         scored.sortBy { it.cost }
