@@ -14,7 +14,7 @@ class MozcEvaluationTest {
     @Test
     fun conversionAccuracy() {
         val dictPath = System.getProperty("iroha.dictionary")
-        val evalFile = File(System.getProperty("iroha.mozcDir") ?: "", "${MozcImporter.MOZC_COMMIT}/evaluation.tsv")
+        val evalFile = File(System.getProperty("iroha.mozcDir") ?: "", "${MozcImporter.MOZC_COMMIT}/dictionary_oss/evaluation.tsv")
         assumeTrue(dictPath != null && File(dictPath).exists() && evalFile.exists())
         val converter = RandomAccessFile(dictPath, "r").use { file ->
             Converter(SystemDictionary(file.channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())))
@@ -31,7 +31,7 @@ class MozcEvaluationTest {
             }
             val output = converter.convert(f[1]).joinToString("") { it.candidates.first().surface }
             total++
-            if (Regex(f[4]).matches(output) == match) passed++
+            if (Regex(f[4]).matches(output) == match) passed++ else println("mozc evaluation miss: ${f[1]} -> $output (${f[3]} ${f[4]})")
         }
         val rate = passed * 100.0 / total
         println("mozc evaluation: $passed / $total (${"%.1f".format(rate)}%)")

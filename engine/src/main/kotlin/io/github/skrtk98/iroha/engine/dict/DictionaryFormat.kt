@@ -8,6 +8,8 @@ package io.github.skrtk98.iroha.engine.dict
  * chars    : u16 × charCount        文字コード表 (CharCodec)
  * pos      : u8 × posCount          品詞 ID ごとの PosClass
  * userPos  : u16 × userPosCount      UserPos ごとの品詞 ID
+ * segment  : u16 × posCount × 4      rid のクラス、lid のクラス、先頭のコスト、末尾のコスト (SegmentRules)
+ *            u8 × ⌈左クラス数 × 右クラス数 / 8⌉  区切るかのビット列
  * matrix   : rid ごとの行。u32 × dim の行オフセットの後に各行が続く
  * blocks   : u32 × blockCount       BLOCK_SIZE 件ごとの先頭レコードの data 内オフセット
  * data     : レコード列             読みの昇順。読みは前方一致圧縮。
@@ -22,8 +24,8 @@ package io.github.skrtk98.iroha.engine.dict
  */
 internal object DictionaryFormat {
     const val MAGIC = 0x49524844 // "IRHD"
-    const val VERSION = 3
-    const val HEADER_SIZE = 48
+    const val VERSION = 4
+    const val HEADER_SIZE = 56
     const val BLOCK_SIZE = 16
     const val RESOLUTION = 64
 

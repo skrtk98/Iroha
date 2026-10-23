@@ -13,9 +13,11 @@ class DictionaryBuilder(
     private val matrixDim: Int,
     private val unknownNounId: Int,
     private val userPosIds: List<Int> = UserPos.entries.map { unknownNounId },
+    private val segmentRules: SegmentRules = SegmentRules.fromPosClasses(posClasses),
 ) {
     init {
         require(matrix.size == matrixDim * matrixDim)
+        require(segmentRules.leftClass.size == posClasses.size)
     }
 
     fun write(entries: List<WordEntry>, out: OutputStream) {
@@ -59,13 +61,28 @@ class DictionaryBuilder(
         dataOut.writeInt(unknownNounId)
         dataOut.writeInt(data.size())
         dataOut.writeInt(userPosIds.size)
+        dataOut.writeInt(segmentRules.leftClassCount)
+        dataOut.writeInt(segmentRules.rightClassCount)
         for (i in 0 until codec.size) dataOut.writeChar(codec.charAt(i).code)
         for (posClass in posClasses) dataOut.writeByte(posClass.ordinal)
         for (id in userPosIds) dataOut.writeShort(id)
+        writeSegmentRules(dataOut)
         dataOut.write(encodeMatrix())
         for (offset in blockOffsets) dataOut.writeInt(offset)
         data.writeTo(dataOut)
         dataOut.flush()
+    }
+
+    private fun writeSegmentRules(out: DataOutputStream) {
+        val rules = segmentRules
+        for (array in listOf(rules.leftClass, rules.rightClass, rules.prefixPenalty, rules.suffixPenalty)) {
+            for (value in array) out.writeShort(value.coerceIn(0, 0xFFFF))
+        }
+        val bits = ByteArray((rules.boundary.size + 7) / 8)
+        for ((i, b) in rules.boundary.withIndex()) {
+            if (b) bits[i ushr 3] = (bits[i ushr 3].toInt() or (1 shl (i and 7))).toByte()
+        }
+        out.write(bits)
     }
 
     private fun encodeEntries(codec: CharCodec, words: List<WordEntry>): ByteArray {
