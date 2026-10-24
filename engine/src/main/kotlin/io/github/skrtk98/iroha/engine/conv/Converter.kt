@@ -21,6 +21,11 @@ class Converter(
     /** 言語モデルの -ln 確率を辞書のコストに直す倍率。 */
     private val languageModelWeight: Float = LANGUAGE_MODEL_WEIGHT,
 ) {
+    init {
+        // 言語モデルのコストが 0 以上であることを前提に、負けの決まった経路を打ち切る
+        require(languageModelWeight >= 0f && languageModelWeight.isFinite()) { "invalid language model weight $languageModelWeight" }
+    }
+
     private class Node(
         val start: Int,
         val end: Int,
