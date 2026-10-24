@@ -15,6 +15,7 @@ android {
         targetSdk = 36
         versionCode = 4
         versionName = "0.1.3"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // 署名の設定はリポジトリの外の signing.properties から読む（書式は signing.properties.example）。
@@ -139,5 +140,6 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.runner)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

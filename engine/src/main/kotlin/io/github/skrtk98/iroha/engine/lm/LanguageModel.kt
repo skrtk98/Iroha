@@ -35,6 +35,8 @@ class LanguageModel(private val buf: ByteBuffer) {
         trigramCount = buf.getInt(8)
         lowerCount = buf.getInt(12)
         unknownCost = buf.getFloat(16)
+        // 変換はコストが 0 以上であることを前提に、負けの決まった経路を打ち切る
+        require(unknownCost >= 0f && unknownCost.isFinite()) { "invalid unknown cost $unknownCost" }
         trigramKeys = HEADER_SIZE
         trigramProbs = trigramKeys + trigramCount * 4
         lowerKeys = trigramProbs + trigramCount

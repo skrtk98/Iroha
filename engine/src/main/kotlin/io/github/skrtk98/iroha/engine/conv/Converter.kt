@@ -21,6 +21,11 @@ class Converter(
     /** 言語モデルの -ln 確率を辞書のコストに直す倍率。 */
     private val languageModelWeight: Float = LANGUAGE_MODEL_WEIGHT,
 ) {
+    init {
+        // 言語モデルのコストが 0 以上であることを前提に、負けの決まった経路を打ち切る
+        require(languageModelWeight >= 0f && languageModelWeight.isFinite()) { "invalid language model weight $languageModelWeight" }
+    }
+
     private class Node(
         val start: Int,
         val end: Int,
@@ -148,8 +153,10 @@ class Converter(
                     bestCost = Int.MAX_VALUE
                     for (m in nodesAt[node.end - start]) {
                         val c = best[m] ?: continue
-                        val total = dictionary.connectionCost(node.word.rid, m.word.lid) + c +
-                            (scorer?.cost(node, m) ?: 0)
+                        val base = dictionary.connectionCost(node.word.rid, m.word.lid) + c
+                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
+                        if (base >= bestCost) continue
+                        val total = base + (scorer?.cost(node, m) ?: 0)
                         if (total < bestCost) {
                             bestCost = total
                             bestNext = m
@@ -378,8 +385,10 @@ class Converter(
                         dictionary.prefixPenalty(node.word.lid) + (scorer?.cost(null, node) ?: 0)
                 } else {
                     for (p in prevs) {
-                        val t = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost +
-                            (scorer?.cost(p, node) ?: 0)
+                        val base = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost
+                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
+                        if (base >= node.total) continue
+                        val t = base + (scorer?.cost(p, node) ?: 0)
                         if (t < node.total) {
                             node.total = t
                             node.prev = p
