@@ -148,8 +148,10 @@ class Converter(
                     bestCost = Int.MAX_VALUE
                     for (m in nodesAt[node.end - start]) {
                         val c = best[m] ?: continue
-                        val total = dictionary.connectionCost(node.word.rid, m.word.lid) + c +
-                            (scorer?.cost(node, m) ?: 0)
+                        val base = dictionary.connectionCost(node.word.rid, m.word.lid) + c
+                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
+                        if (base >= bestCost) continue
+                        val total = base + (scorer?.cost(node, m) ?: 0)
                         if (total < bestCost) {
                             bestCost = total
                             bestNext = m
@@ -378,8 +380,10 @@ class Converter(
                         dictionary.prefixPenalty(node.word.lid) + (scorer?.cost(null, node) ?: 0)
                 } else {
                     for (p in prevs) {
-                        val t = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost +
-                            (scorer?.cost(p, node) ?: 0)
+                        val base = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost
+                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
+                        if (base >= node.total) continue
+                        val t = base + (scorer?.cost(p, node) ?: 0)
                         if (t < node.total) {
                             node.total = t
                             node.prev = p
