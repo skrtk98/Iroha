@@ -1,3 +1,14 @@
-# 変換エンジンと IME 本体を、インストール時に前もってコンパイルさせる。
-# IME を開いた直後の打鍵は JIT がまだ効かず、変換 1 回に数百 ms かかるため。
-HSPLio/github/skrtk98/iroha/**->**(**)**
+# 変換エンジンと IME 本体を前もってコンパイルさせる。最初の変換は JIT がまだ効かず、数倍遅いため。
+# Play 以外から入れた場合は、ProfileInstaller が書いたこの Profile で、端末が後でバックグラウンドの最適化をする。
+# 設定画面やライセンス画面は使う機会が少ないので含めない。
+HSPLio/github/skrtk98/iroha/IrohaApplication;->**(**)**
+HSPLio/github/skrtk98/iroha/data/**->**(**)**
+HSPLio/github/skrtk98/iroha/ime/**->**(**)**
+HSPLio/github/skrtk98/iroha/ui/keyboard/**->**(**)**
+HSPLio/github/skrtk98/iroha/ui/theme/**->**(**)**
+HSPLio/github/skrtk98/iroha/engine/conv/**->**(**)**
+HSPLio/github/skrtk98/iroha/engine/dict/**->**(**)**
+HSPLio/github/skrtk98/iroha/engine/lm/**->**(**)**
+HSPLio/github/skrtk98/iroha/engine/session/**->**(**)**
+HSPLio/github/skrtk98/iroha/engine/text/**->**(**)**
+HSPLio/github/skrtk98/iroha/engine/user/**->**(**)**
