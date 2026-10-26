@@ -1,5 +1,6 @@
 package io.github.skrtk98.iroha.engine.conv
 
+import io.github.skrtk98.iroha.engine.TestDictionary
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -74,7 +75,8 @@ class ConverterIntegrationTest {
             assumeTrue(path != null && File(path).exists())
             RandomAccessFile(path, "r").use { file ->
                 val buffer = file.channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())
-                converter = Converter(SystemDictionary(buffer))
+                // アプリと同じく言語モデルも使う
+                converter = Converter(SystemDictionary(buffer), languageModel = TestDictionary.languageModel)
             }
         }
     }

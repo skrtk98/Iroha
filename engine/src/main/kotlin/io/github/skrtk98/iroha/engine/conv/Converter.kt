@@ -1,8 +1,10 @@
 package io.github.skrtk98.iroha.engine.conv
 
+import io.github.skrtk98.iroha.engine.dict.ExtraKind
 import io.github.skrtk98.iroha.engine.dict.PosClass
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
 import io.github.skrtk98.iroha.engine.dict.WordEntry
+import io.github.skrtk98.iroha.engine.lm.LanguageModel
 import io.github.skrtk98.iroha.engine.text.Kana
 
 /**
@@ -12,7 +14,18 @@ import io.github.skrtk98.iroha.engine.text.Kana
 class Converter(
     private val dictionary: SystemDictionary,
     private val sources: List<WordSource> = emptyList(),
+    /** 絵文字を候補に出してよいか。端末のフォントで表示できない絵文字を除くのに使う。 */
+    private val isDisplayable: (String) -> Boolean = { true },
+    /** 表記の文字の並びの自然さ。あれば辞書のコストに足して、文として自然な並びを選ぶ。 */
+    private val languageModel: LanguageModel? = null,
+    /** 言語モデルの -ln 確率を辞書のコストに直す倍率。 */
+    private val languageModelWeight: Float = LANGUAGE_MODEL_WEIGHT,
 ) {
+    init {
+        // 言語モデルのコストが 0 以上であることを前提に、負けの決まった経路を打ち切る
+        require(languageModelWeight >= 0f && languageModelWeight.isFinite()) { "invalid language model weight $languageModelWeight" }
+    }
+
     private class Node(
         val start: Int,
         val end: Int,
@@ -20,7 +33,86 @@ class Converter(
     ) {
         var total = Int.MAX_VALUE
         var prev: Node? = null
+
+        /** 言語モデルで、語の 3 文字目以降に掛かるコスト。前の語によらないので一度だけ求める。NaN は未計算。 */
+        var innerSequenceCost = Float.NaN
     }
+
+    /**
+     * 1 回の変換の間だけ、言語モデルの 3-gram のコストを覚えておく。同じ並びを何度も引くため。
+     * 語の境目をまたぐのは先頭の 2 文字だけなので、辺ごとにはその 2 文字分だけ求める。
+     */
+    private inner class SequenceScorer(private val model: LanguageModel) {
+        // 開番地法の表。キーは 3 文字を詰めた値 (0 は空き)、値はコスト
+        private var keys = LongArray(1024)
+        private var values = FloatArray(1024)
+        private var size = 0
+
+        private fun cost(a: Char, b: Char, c: Char): Float {
+            val key = (a.code.toLong() shl 32) or (b.code.toLong() shl 16) or c.code.toLong() or (1L shl 48)
+            var i = slot(key, keys.size)
+            while (true) {
+                val k = keys[i]
+                if (k == key) return values[i]
+                if (k == 0L) break
+                i = (i + 1) and (keys.size - 1)
+            }
+            val value = model.cost(a, b, c)
+            if ((size + 1) * 2 > keys.size) grow()
+            insert(key, value)
+            return value
+        }
+
+        private fun slot(key: Long, capacity: Int): Int = ((key * -0x61c8864680b583ebL) ushr 40).toInt() and (capacity - 1)
+
+        private fun insert(key: Long, value: Float) {
+            var i = slot(key, keys.size)
+            while (keys[i] != 0L) i = (i + 1) and (keys.size - 1)
+            keys[i] = key
+            values[i] = value
+            size++
+        }
+
+        private fun grow() {
+            val oldKeys = keys
+            val oldValues = values
+            keys = LongArray(oldKeys.size * 2)
+            values = FloatArray(oldKeys.size * 2)
+            size = 0
+            for (i in oldKeys.indices) if (oldKeys[i] != 0L) insert(oldKeys[i], oldValues[i])
+        }
+
+        /**
+         * [previous] の後に [node] を置くコスト。[previous] が 1 文字なら、その前の語 ([Node.prev]) から
+         * もう 1 文字を借りる。前の語が無ければ [before] (前の文節の表記など。空なら文頭) を文脈にする。
+         */
+        fun cost(previous: Node?, node: Node, before: String = ""): Int {
+            if (previous == null) return cost(before.getOrNull(before.length - 2), before.lastOrNull(), node)
+            val surface = previous.word.surface
+            val a = if (surface.length >= 2) surface[surface.length - 2] else previous.prev?.word?.surface?.lastOrNull()
+            return cost(a, surface.lastOrNull(), node)
+        }
+
+        private fun cost(first: Char?, second: Char?, node: Node): Int {
+            val text = node.word.surface
+            if (text.isEmpty()) return 0
+            val a = first?.let(LanguageModel::normalize) ?: LanguageModel.BOS
+            val b = second?.let(LanguageModel::normalize) ?: LanguageModel.BOS
+            val c0 = LanguageModel.normalize(text[0])
+            var sum = cost(a, b, c0)
+            if (text.length >= 2) sum += cost(b, c0, LanguageModel.normalize(text[1]))
+            if (node.innerSequenceCost.isNaN()) {
+                var inner = 0f
+                for (i in 2 until text.length) {
+                    inner += cost(LanguageModel.normalize(text[i - 2]), LanguageModel.normalize(text[i - 1]), LanguageModel.normalize(text[i]))
+                }
+                node.innerSequenceCost = inner
+            }
+            return ((sum + node.innerSequenceCost) * languageModelWeight).toInt()
+        }
+    }
+
+    private fun sequenceScorer(): SequenceScorer? = languageModel?.let { SequenceScorer(it) }
 
     /**
      * [reading] 全体を変換して文節に分ける。各文節の候補は先頭の 1 件だけを持つ。
@@ -29,12 +121,12 @@ class Converter(
     fun convert(reading: String, leftRid: Int = BOS_EOS): List<Segment> {
         if (reading.isEmpty()) return emptyList()
         val path = bestPath(reading, 0, reading.length, leftRid, BOS_EOS)
-        return splitSegments(reading, path)
+        return applyCollocations(reading, splitSegments(reading, path), leftRid)
     }
 
     /**
      * 文節 [start]..[end] の候補を良い順に返す。[leftRid] は前の文節の右端品詞、
-     * [rightLid] は次の文節の左端品詞（末尾なら文末）。
+     * [rightLid] は次の文節の左端品詞（末尾なら文末）。[leftSurface] は前の文節の表記で、言語モデルの文脈に使う。
      */
     fun candidates(
         reading: String,
@@ -42,9 +134,12 @@ class Converter(
         end: Int,
         leftRid: Int = BOS_EOS,
         rightLid: Int = BOS_EOS,
-        limit: Int = 60,
+        limit: Int = 200,
+        leftSurface: String = "",
     ): List<Candidate> {
         val nodesAt = buildLattice(reading, start, end)
+        // 後ろから求めるので、1 文字の語の前の語は分からない。その分の文脈は文頭として近似する
+        val scorer = sequenceScorer()
         // best[node] = node から区間末尾までの最小コスト（node 自身を含む）
         val best = HashMap<Node, Int>()
         val next = HashMap<Node, Node?>()
@@ -53,12 +148,15 @@ class Converter(
                 var bestCost: Int
                 var bestNext: Node? = null
                 if (node.end == end) {
-                    bestCost = dictionary.connectionCost(node.word.rid, rightLid)
+                    bestCost = dictionary.connectionCost(node.word.rid, rightLid) + dictionary.suffixPenalty(node.word.rid)
                 } else {
                     bestCost = Int.MAX_VALUE
                     for (m in nodesAt[node.end - start]) {
                         val c = best[m] ?: continue
-                        val total = dictionary.connectionCost(node.word.rid, m.word.lid) + c
+                        val base = dictionary.connectionCost(node.word.rid, m.word.lid) + c
+                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
+                        if (base >= bestCost) continue
+                        val total = base + (scorer?.cost(node, m) ?: 0)
                         if (total < bestCost) {
                             bestCost = total
                             bestNext = m
@@ -82,7 +180,8 @@ class Converter(
                 last = cur
                 cur = next[cur]
             }
-            val cost = dictionary.connectionCost(leftRid, node.word.lid) + c
+            val cost = dictionary.connectionCost(leftRid, node.word.lid) + dictionary.prefixPenalty(node.word.lid) + c +
+                (scorer?.cost(null, node, leftSurface) ?: 0)
             scored.add(Candidate(surface.toString(), segmentReading, cost, node.word.lid, last.word.rid))
         }
         scored.sortBy { it.cost }
@@ -91,8 +190,21 @@ class Converter(
             .map { Candidate(it, segmentReading, UNKNOWN_COST, fallbackId, fallbackId) }
         // ひらがな・カタカナを必ず残せるよう、その分の枠を空けておく
         val dictionaryLimit = (limit - fallbacks.size).coerceAtLeast(0)
-        val result = LinkedHashMap<String, Candidate>()
+        val ranked = LinkedHashMap<String, Candidate>()
         for (candidate in scored) {
+            if (ranked.size >= DICTIONARY_CANDIDATES) break
+            ranked.putIfAbsent(candidate.surface, candidate)
+        }
+        // 辞書の上位の後に記号と絵文字を挟み、顔文字と単漢字は辞書の候補の後ろに付ける
+        val dictionaryCandidates = withNumberVariants(ranked.values)
+        val ordered = dictionaryCandidates.take(CANDIDATES_BEFORE_SYMBOLS) +
+            extraCandidates(ExtraKind.Symbol, segmentReading) +
+            extraCandidates(ExtraKind.Emoji, segmentReading) +
+            dictionaryCandidates.drop(CANDIDATES_BEFORE_SYMBOLS) +
+            extraCandidates(ExtraKind.Emoticon, segmentReading) +
+            extraCandidates(ExtraKind.SingleKanji, segmentReading)
+        val result = LinkedHashMap<String, Candidate>()
+        for (candidate in ordered) {
             if (result.size >= dictionaryLimit) break
             result.putIfAbsent(candidate.surface, candidate)
         }
@@ -103,6 +215,96 @@ class Converter(
         return result.values.toList()
     }
 
+    /** 数で始まる候補のすぐ後に、その数の別の書き方 (3千円 → 三千円, 3000円, 3,000円 …) を置く。 */
+    private fun withNumberVariants(candidates: Collection<Candidate>): List<Candidate> = buildList {
+        for (candidate in candidates) {
+            add(candidate)
+            if (dictionary.posClass(candidate.lid) != PosClass.Number) continue
+            NumberVariants.of(candidate.surface).forEach { add(candidate.copy(surface = it)) }
+        }
+    }
+
+    /** [kind] のデータのうち読みが [reading] の語を候補にする。 */
+    private fun extraCandidates(kind: ExtraKind, reading: String): List<Candidate> =
+        dictionary.extras(kind, reading)
+            .filter { kind != ExtraKind.Emoji || isDisplayable(it.surface) }
+            .map { it.toCandidate() }
+
+    /**
+     * 確定した [committed] の次に出す候補 (mozc のゼロクエリ)。末尾が数字なら助数詞などを、
+     * そうでなければ末尾に一致するいちばん長いきっかけの語に続く言葉を返す。
+     */
+    fun zeroQuery(committed: String, limit: Int = 30): List<Candidate> {
+        val digits = committed.takeLastWhile { it in '0'..'9' || it in '０'..'９' }
+            .map { if (it in '０'..'９') '0' + (it - '０') else it }
+            .joinToString("")
+        val words = if (digits.isNotEmpty()) {
+            dictionary.extras(ExtraKind.ZeroQueryNumber, digits)
+                .ifEmpty { dictionary.extras(ExtraKind.ZeroQueryNumber, ZERO_QUERY_DEFAULT) }
+        } else {
+            (minOf(committed.length, SystemDictionary.MAX_READING_CHARS) downTo 1).asSequence()
+                .map { dictionary.extras(ExtraKind.ZeroQuery, committed.takeLast(it)) }
+                .firstOrNull { it.isNotEmpty() }
+                .orEmpty()
+        }
+        return words.asSequence()
+            .filter { isDisplayable(it.surface) }
+            .map { Candidate(it.surface, "", it.cost, it.lid, it.rid) }
+            .distinctBy { it.surface }
+            .take(limit)
+            .toList()
+    }
+
+    /** collocation.txt の並び。数が少ないのですべて持っておく。 */
+    private val collocations: List<String> by lazy {
+        val all = ArrayList<String>()
+        dictionary.predictExtras(ExtraKind.Collocation, "", Int.MAX_VALUE) { all.add(it.surface) }
+        all
+    }
+
+    /**
+     * mozc の collocation.txt に載っている並び (こっちに来い など) になるよう、隣の文節と合わせて
+     * 候補を選び直す。並びの片側がもう選ばれていて、もう片側が候補にあるときだけ入れ替える。
+     */
+    private fun applyCollocations(reading: String, segments: List<Segment>, leftRid: Int): List<Segment> {
+        if (segments.size < 2 || collocations.isEmpty()) return segments
+        val result = segments.toMutableList()
+        var start = 0
+        for (i in 0 until result.size - 1) {
+            val end = start + result[i].reading.length
+            val nextEnd = end + result[i + 1].reading.length
+            val current = result[i].candidates.first()
+            val next = result[i + 1].candidates.first()
+            val left = result.getOrNull(i - 1)?.candidates?.first()?.rid ?: leftRid
+            val right = result.getOrNull(i + 2)?.candidates?.first()?.lid ?: BOS_EOS
+            for (collocation in collocations) {
+                if (collocation == current.surface + next.surface) break
+                val nextCandidate = if (collocation.startsWith(current.surface)) {
+                    val wanted = collocation.substring(current.surface.length)
+                    candidates(reading, end, nextEnd, current.rid, right).firstOrNull { it.surface == wanted }
+                } else {
+                    null
+                }
+                if (nextCandidate != null) {
+                    result[i + 1] = Segment(result[i + 1].reading, listOf(nextCandidate))
+                    break
+                }
+                val currentCandidate = if (collocation.endsWith(next.surface)) {
+                    val wanted = collocation.removeSuffix(next.surface)
+                    candidates(reading, start, end, left, next.lid).firstOrNull { it.surface == wanted }
+                } else {
+                    null
+                }
+                if (currentCandidate != null) {
+                    result[i] = Segment(result[i].reading, listOf(currentCandidate))
+                    break
+                }
+            }
+            start = end
+        }
+        return result
+    }
+
     /**
      * 入力中の読みに対する予測候補。先頭は全体の変換結果。
      */
@@ -110,7 +312,9 @@ class Converter(
         if (reading.isEmpty()) return emptyList()
         val result = LinkedHashMap<String, Candidate>()
         fun add(c: Candidate) {
-            if (result.size < limit) result.putIfAbsent(c.surface, c)
+            if (result.size >= limit || c.surface in result) return
+            if (dictionary.extras(ExtraKind.SuggestionFilter, c.surface).isNotEmpty()) return
+            result[c.surface] = c
         }
 
         // 学習・ユーザー辞書の完全一致を最優先
@@ -134,19 +338,27 @@ class Converter(
         dictionary.exactSearch(reading)
             .filter { dictionary.posClass(it.lid) != PosClass.Functional }
             .forEach { add(it.toCandidate()) }
+        // よくある読み間違いには正しい表記を出す (おどさん → お土産)
+        dictionary.extras(ExtraKind.ReadingCorrection, reading).forEach { add(it.toCandidate()) }
 
         val predicted = ArrayList<WordEntry>()
         for (source in sources) predicted += source.predict(reading, PREDICT_SOURCE_LIMIT)
         val maxReadings = if (reading.length <= 1) PREDICT_SCAN_SHORT else PREDICT_SCAN
         val systemPredicted = ArrayList<WordEntry>()
         dictionary.predictiveSearch(reading, maxReadings) { w ->
-            if (w.reading.length > reading.length && dictionary.posClass(w.lid) == PosClass.Content) {
+            if (w.reading.length > reading.length && dictionary.posClass(w.lid).let { it == PosClass.Content || it == PosClass.Number }) {
                 systemPredicted.add(w)
             }
         }
         systemPredicted.sortBy { it.cost }
         predicted += systemPredicted.take(limit)
         predicted.forEach { add(it.toCandidate()) }
+        // 語に続く言い回し (しなきゃいけない など)
+        val suffixes = ArrayList<WordEntry>()
+        dictionary.predictExtras(ExtraKind.Suffix, reading, PREDICT_SCAN_SHORT) { suffixes.add(it) }
+        suffixes.sortedBy { it.cost }.take(SUFFIX_LIMIT).forEach { add(it.toCandidate()) }
+        extraCandidates(ExtraKind.Symbol, reading).forEach(::add)
+        extraCandidates(ExtraKind.Emoji, reading).forEach(::add)
 
         add(Candidate(reading, reading, UNKNOWN_COST, dictionary.unknownNounId, dictionary.unknownNounId))
         add(
@@ -162,15 +374,21 @@ class Converter(
 
     private fun bestPath(reading: String, start: Int, end: Int, leftRid: Int, rightLid: Int): List<Node> {
         val nodesAt = buildLattice(reading, start, end)
+        val scorer = sequenceScorer()
         val endingAt = Array(end - start + 1) { ArrayList<Node>() }
         for (pos in start until end) {
             for (node in nodesAt[pos - start]) {
                 val prevs = if (pos == start) null else endingAt[pos - start]
                 if (prevs == null) {
-                    node.total = dictionary.connectionCost(leftRid, node.word.lid) + node.word.cost
+                    // mozc と同じく、変換する範囲の先頭と末尾の語には boundary.def のコストを足す
+                    node.total = dictionary.connectionCost(leftRid, node.word.lid) + node.word.cost +
+                        dictionary.prefixPenalty(node.word.lid) + (scorer?.cost(null, node) ?: 0)
                 } else {
                     for (p in prevs) {
-                        val t = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost
+                        val base = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost
+                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
+                        if (base >= node.total) continue
+                        val t = base + (scorer?.cost(p, node) ?: 0)
                         if (t < node.total) {
                             node.total = t
                             node.prev = p
@@ -184,7 +402,7 @@ class Converter(
         var bestLast: Node? = null
         var bestTotal = Int.MAX_VALUE
         for (node in endingAt[end - start]) {
-            val t = node.total + dictionary.connectionCost(node.word.rid, rightLid)
+            val t = node.total + dictionary.connectionCost(node.word.rid, rightLid) + dictionary.suffixPenalty(node.word.rid)
             if (t < bestTotal) {
                 bestTotal = t
                 bestLast = node
@@ -246,7 +464,7 @@ class Converter(
         else -> 4
     }
 
-    /** 自立語・記号の手前で文節を切る。付属語は前の文節に、接頭辞の次の語は接頭辞の文節に付ける。 */
+    /** mozc の segmenter.def に従い、隣り合う語の品詞から文節を切る。 */
     private fun splitSegments(reading: String, path: List<Node>): List<Segment> {
         val segments = ArrayList<Segment>()
         var segStart = 0
@@ -254,15 +472,8 @@ class Converter(
         var firstLid = 0
         var lastRid = 0
         var cost = 0
-        var previousClass: PosClass? = null
         for ((index, node) in path.withIndex()) {
-            val posClass = dictionary.posClass(node.word.lid)
-            val startsSegment = index == 0 || when (posClass) {
-                PosClass.Functional -> previousClass == PosClass.Symbol
-                PosClass.Content, PosClass.Prefix -> previousClass != PosClass.Prefix
-                PosClass.Symbol -> true
-            }
-            if (startsSegment && index > 0) {
+            if (index > 0 && dictionary.isBoundary(path[index - 1].word.rid, node.word.lid)) {
                 segments.add(
                     Segment(
                         reading.substring(segStart, node.start),
@@ -277,7 +488,6 @@ class Converter(
             surface.append(node.word.surface)
             lastRid = node.word.rid
             cost += node.word.cost
-            previousClass = dictionary.posClass(node.word.rid)
         }
         if (path.isNotEmpty()) {
             val r = reading.substring(segStart)
@@ -289,9 +499,20 @@ class Converter(
     companion object {
         const val BOS_EOS = 0
         private const val UNKNOWN_COST = 12000
+
+        /** mozc の品質回帰テストで最もよく当たった値。 */
+        const val LANGUAGE_MODEL_WEIGHT = 350f
         private const val RUN_COST = 4000
         private const val PREDICT_SCAN = 3000
         private const val PREDICT_SCAN_SHORT = 800
         private const val PREDICT_SOURCE_LIMIT = 10
+
+        /** 文節の候補のうち、辞書から出す数の上限。 */
+        private const val DICTIONARY_CANDIDATES = 60
+
+        /** 文節の候補で、記号・絵文字より前に置く辞書の候補の数。 */
+        private const val CANDIDATES_BEFORE_SYMBOLS = 3
+        private const val SUFFIX_LIMIT = 5
+        private const val ZERO_QUERY_DEFAULT = "default"
     }
 }

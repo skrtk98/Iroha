@@ -34,6 +34,12 @@ sealed interface KeyAction {
     data class SelectCandidate(val index: Int) : KeyAction
     data object ToggleCandidateList : KeyAction
 
+    /** 確定の後に出した続きの候補を選ぶ。 */
+    data class SelectFollowUp(val index: Int) : KeyAction
+
+    /** 続きの候補を閉じてツールバーに戻す。 */
+    data object DismissFollowUps : KeyAction
+
     /** 変換中の文節を伸縮する。 */
     data class ResizeSegment(val delta: Int) : KeyAction
 

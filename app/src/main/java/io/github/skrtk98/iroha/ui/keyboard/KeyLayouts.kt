@@ -65,6 +65,17 @@ object KeyLayouts {
 
     val qwertyRows: List<String> = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
 
+    /**
+     * QWERTY の日英の面の記号キー。[dash] は l の右、[left] と [right] は下段の空白の左右に置く。
+     * シフト中は、よく使う別の記号に替えて数字・記号の面に移らずに打てるようにする。
+     */
+    fun qwertyPunctuation(kana: Boolean, shifted: Boolean): QwertyPunctuation = when {
+        kana && shifted -> QwertyPunctuation("～", listOf("（", "）"), listOf("「", "」"))
+        kana -> QwertyPunctuation("ー", listOf("！", "？"), listOf("、", "。"))
+        shifted -> QwertyPunctuation("_", listOf("(", ")"), listOf("'", "\""))
+        else -> QwertyPunctuation("-", listOf("!", "?"), listOf(",", "."))
+    }
+
     /** QWERTY の数字・記号の面。3 段目の左端は 2 ページ目への切り替えキー。 */
     val symbolRows: List<List<String>> = listOf(
         "1234567890".map { it.toString() },
@@ -79,3 +90,5 @@ object KeyLayouts {
         listOf("_", "[", "]", "「", "」", "…", "〜", "✓"),
     )
 }
+
+data class QwertyPunctuation(val dash: String, val left: List<String>, val right: List<String>)

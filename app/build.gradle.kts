@@ -13,8 +13,9 @@ android {
         applicationId = "io.github.skrtk98.iroha"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 5
+        versionName = "0.2.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // 署名の設定はリポジトリの外の signing.properties から読む（書式は signing.properties.example）。
@@ -59,8 +60,8 @@ android {
     }
     androidResources {
         localeFilters += listOf("ja", "en")
-        // 辞書は APK から直接 mmap するため圧縮しない
-        noCompress += "dic"
+        // 辞書と言語モデルは APK から直接 mmap するため圧縮しない
+        noCompress += listOf("dic", "lm")
     }
     dependenciesInfo {
         // APK に Google 署名の依存情報ブロックを入れない。F-Droid が中身を検証できず、再現ビルドの妨げになる。
@@ -139,5 +140,6 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.runner)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

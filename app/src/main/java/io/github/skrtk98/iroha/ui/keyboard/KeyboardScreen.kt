@@ -116,6 +116,8 @@ fun KeyboardScreen(
                 )
             } else if (state.composing) {
                 CandidateBar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
+            } else if (state.followUps.isNotEmpty() && state.panel == Panel.None) {
+                FollowUpBar(state.followUps, onAction, Modifier.fillMaxWidth().height(barHeight))
             } else {
                 Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
             }
@@ -308,6 +310,24 @@ private fun ToolbarButton(
                 else -> colors.onSurfaceVariant
             },
         )
+    }
+}
+
+/** 確定の後に、続けて打ちそうな語を出す。閉じるとツールバーに戻る。 */
+@Composable
+private fun FollowUpBar(followUps: List<String>, onAction: (KeyAction) -> Unit, modifier: Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        LazyRow(Modifier.weight(1f).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+            itemsIndexed(followUps) { index, text ->
+                CandidateItem(
+                    text = text,
+                    selected = false,
+                    onClick = { onAction(KeyAction.SelectFollowUp(index)) },
+                    modifier = Modifier.fillMaxHeight(),
+                )
+            }
+        }
+        ToolbarButton(R.drawable.ic_close, "候補を閉じる") { onAction(KeyAction.DismissFollowUps) }
     }
 }
 
