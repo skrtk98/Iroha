@@ -72,6 +72,16 @@ class ComposingSessionTest {
     }
 
     @Test
+    fun resizingBackKeepsLearnedChoice() {
+        assertEquals("描いて", convertAndPick("かいて", "描いて"))
+        session.insert("かいて", romaji = false)
+        session.convertOrNext()
+        session.resizeSegment(-1)
+        session.resizeSegment(1)
+        assertEquals("描いて", session.preedit.text)
+    }
+
+    @Test
     fun backspaceCancelsConversionThenDeletes() {
         session.insert("あい", romaji = false)
         session.convertOrNext()
