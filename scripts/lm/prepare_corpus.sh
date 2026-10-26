@@ -25,5 +25,7 @@ for part in "${parts[@]}"; do
 done
 python3 -I "$here/web_corpus.py" "$dir/web.txt" "${files[@]}"
 sha256sum "$dir"/*.bz2 "$dir"/*.jsonl.part "$dir/corpus.txt" "$dir/web.txt"
+# ABEJA-CC-JA は版を指定して取れないので、モデルを作ったときと同じ web.txt になったかを確かめる
+echo "240bb70b794e53c2bb9cffacf2bf36c3228b77514dc990e42c25e74e1f7b208a  $dir/web.txt" | sha256sum -c -
 # 書き言葉の多いもとのコーパスを 3 回渡して、ウェブ文書に引っ張られすぎないようにする
 echo "次を実行: ./gradlew :engine:buildLanguageModel -Piroha.corpus=$dir/corpus.txt,$dir/corpus.txt,$dir/corpus.txt,$dir/web.txt"
