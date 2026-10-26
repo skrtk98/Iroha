@@ -42,6 +42,13 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun keepsContextWithShippedModel() {
+        assumeTrue(TestDictionary.languageModel != null)
+        // 「に」の前が「蚊」か「家」かで「噛まれる」の自然さが変わる
+        assertTrue(convert("かにかまれる").startsWith("蚊に"))
+    }
+
+    @Test
     fun splitsIntoSegments() {
         val segments = converter.convert("わたしのなまえはなかのです").map { it.reading }
         assertEquals(listOf("わたしの", "なまえは", "なかのです"), segments)
