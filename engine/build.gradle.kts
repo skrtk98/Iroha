@@ -55,5 +55,12 @@ tasks.test {
     inputs.file(languageModelFile)
     // 言語モデルの重みを試すとき用 (-Diroha.lmWeight=…)
     providers.systemProperty("iroha.lmWeight").orNull?.let { systemProperty("iroha.lmWeight", it) }
+    // 手元の Microsoft Research IME Corpus で測るとき用 (-Diroha.msImeDir=…)。再配布できないのでリポジトリには置かない
+    providers.systemProperty("iroha.msImeDir").orNull?.let { dir ->
+        systemProperty("iroha.msImeDir", dir)
+        // 差し替えたコーパスで測り直せるよう、中身も入力にする
+        inputs.files(fileTree(dir) { include("*.read.3000.txt", "*.ref.3000.txt") }).withPropertyName("msImeCorpus")
+    }
+    providers.systemProperty("iroha.msImeMisses").orNull?.let { systemProperty("iroha.msImeMisses", it) }
     maxHeapSize = "1g"
 }
