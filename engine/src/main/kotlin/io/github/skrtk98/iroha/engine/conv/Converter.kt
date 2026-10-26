@@ -118,7 +118,18 @@ class Converter(
     fun convert(reading: String, leftRid: Int = BOS_EOS): List<Segment> {
         if (reading.isEmpty()) return emptyList()
         val path = bestPath(reading, 0, reading.length, leftRid, BOS_EOS)
-        return applyCollocations(reading, splitSegments(reading, path), leftRid)
+        return applyCollocations(reading, splitSegments(reading, path), leftRid).map(::preferKanjiNumber)
+    }
+
+    /**
+     * mozc と同じく、かなで打った数は漢数字を先に出す (いちおく → 一億、にせんえんさつ → 二千円札)。
+     * 辞書では「いち」の「1」のほうが「一」より安いので、そのままでは算用数字が先になる。算用数字は候補に残る。
+     */
+    private fun preferKanjiNumber(segment: Segment): Segment {
+        val top = segment.candidates.first()
+        if (dictionary.posClass(top.lid) != PosClass.Number || segment.reading.any { it.isDigit() }) return segment
+        val kanji = NumberVariants.toKanjiNumbers(top.surface) ?: return segment
+        return Segment(segment.reading, listOf(top.copy(surface = kanji)) + segment.candidates.drop(1))
     }
 
     /**
@@ -193,7 +204,7 @@ class Converter(
             ranked.putIfAbsent(candidate.surface, candidate)
         }
         // 辞書の上位の後に記号と絵文字を挟み、顔文字と単漢字は辞書の候補の後ろに付ける
-        val dictionaryCandidates = withNumberVariants(ranked.values)
+        val dictionaryCandidates = withNumberVariants(ranked.values, segmentReading)
         val ordered = dictionaryCandidates.take(CANDIDATES_BEFORE_SYMBOLS) +
             extraCandidates(ExtraKind.Symbol, segmentReading) +
             extraCandidates(ExtraKind.Emoji, segmentReading) +
@@ -212,12 +223,29 @@ class Converter(
         return result.values.toList()
     }
 
-    /** 数で始まる候補のすぐ後に、その数の別の書き方 (3千円 → 三千円, 3000円, 3,000円 …) を置く。 */
-    private fun withNumberVariants(candidates: Collection<Candidate>): List<Candidate> = buildList {
+    /**
+     * 数で始まる候補のすぐ後に、その数の別の書き方 (3千円 → 三千円, 3000円, 3,000円 …) を置く。
+     * かなで打った数は、mozc と同じく漢数字の書き方を先に置く ([preferKanjiNumber] と同じ順)。
+     */
+    private fun withNumberVariants(candidates: Collection<Candidate>, reading: String): List<Candidate> = buildList {
+        // 品詞が数の語だけを書き換える。一人・一階のように、数の品詞でも辞書にある語も含める
+        val numberWords by lazy {
+            dictionary.exactSearch(reading).filter { dictionary.posClass(it.lid) == PosClass.Number }.mapTo(HashSet()) { it.surface }
+        }
+        val kana = reading.none { it.isDigit() }
         for (candidate in candidates) {
-            add(candidate)
-            if (dictionary.posClass(candidate.lid) != PosClass.Number) continue
-            NumberVariants.of(candidate.surface).forEach { add(candidate.copy(surface = it)) }
+            if (NumberVariants.of(candidate.surface).isEmpty() ||
+                dictionary.posClass(candidate.lid) != PosClass.Number &&
+                candidate.surface !in numberWords &&
+                !NumberVariants.isKanjiNumber(candidate.surface)
+            ) {
+                add(candidate)
+                continue
+            }
+            val kanji = if (kana) NumberVariants.toKanjiNumbers(candidate.surface) else null
+            val surfaces = listOfNotNull(kanji, candidate.surface) + NumberVariants.of(candidate.surface)
+            // 重複を残すと、記号より前に置く候補の枠を同じ表記が食う
+            surfaces.distinct().forEach { add(candidate.copy(surface = it)) }
         }
     }
 
