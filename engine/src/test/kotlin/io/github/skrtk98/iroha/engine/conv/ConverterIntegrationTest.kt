@@ -2,13 +2,17 @@ package io.github.skrtk98.iroha.engine.conv
 
 import io.github.skrtk98.iroha.engine.TestDictionary
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
+import io.github.skrtk98.iroha.engine.lm.LanguageModel
+import io.github.skrtk98.iroha.engine.lm.LanguageModelBuilder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 
 /** ビルドした実辞書での変換結果を確かめる。 */
@@ -26,9 +30,21 @@ class ConverterIntegrationTest {
 
     @Test
     fun keepsContextAcrossOneCharacterParticles() {
+        // 「を」までは「ローマ字分を」のほうが安いが、「書く」まで見ると「ローマ字文を書く」のほうが安い言語モデル。
+        // 「を」の時点で安い経路だけを残すと「書く」の前の文字 (文 / 分) が分からず、「ローマ字分を書く」になる。
+        // 実際のモデルの中身に左右されないよう小さく作る
+        val builder = LanguageModelBuilder(minTrigramCount = 1)
+        repeat(100) { builder.add("ローマ字分を足す") }
+        repeat(30) { builder.add("ローマ字文を書く") }
+        val model = LanguageModel(ByteBuffer.wrap(ByteArrayOutputStream().also(builder::write).toByteArray()))
+        val withModel = Converter(dictionary, languageModel = model)
+        assertEquals("ローマ字文を書く", withModel.convert("ろーまじぶんをかく").joinToString("") { it.candidates.first().surface })
+    }
+
+    @Test
+    fun keepsContextWithShippedModel() {
         assumeTrue(TestDictionary.languageModel != null)
-        // 「を」の後の「書く」は、その前の文字 (文 / 分) で言語モデルのコストが変わる
-        assertEquals("ローマ字文を書く", convert("ろーまじぶんをかく"))
+        // 「に」の前が「蚊」か「家」かで「噛まれる」の自然さが変わる
         assertTrue(convert("かにかまれる").startsWith("蚊に"))
     }
 
@@ -75,6 +91,7 @@ class ConverterIntegrationTest {
 
     companion object {
         private lateinit var converter: Converter
+        private lateinit var dictionary: SystemDictionary
 
         @BeforeClass
         @JvmStatic
@@ -83,8 +100,9 @@ class ConverterIntegrationTest {
             assumeTrue(path != null && File(path).exists())
             RandomAccessFile(path, "r").use { file ->
                 val buffer = file.channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())
+                dictionary = SystemDictionary(buffer)
                 // アプリと同じく言語モデルも使う
-                converter = Converter(SystemDictionary(buffer), languageModel = TestDictionary.languageModel)
+                converter = Converter(dictionary, languageModel = TestDictionary.languageModel)
             }
         }
     }
