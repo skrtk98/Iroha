@@ -42,6 +42,9 @@ class ComposingSession(
     private var segments: List<ConvSegment>? = null
     private var focus = 0
 
+    /** 直前に確定した文節の表記。次の変換で、最初の文節の前の文脈として使う。 */
+    private var previousSurface: String? = null
+
     val isComposing: Boolean get() = buffer.isNotEmpty()
     val isConverting: Boolean get() = segments != null
 
@@ -144,10 +147,14 @@ class ComposingSession(
         if (newLength == segs[focus].reading.length) return true
         val leftRid = segs.getOrNull(focus - 1)?.current?.rid ?: Converter.BOS_EOS
         val end = start + newLength
-        val resized = ConvSegment(reading.substring(start, end), converter.candidates(reading, start, end, leftRid))
+        val leftSurface = segs.getOrNull(focus - 1)?.current?.surface ?: previousSurface.orEmpty()
+        val resized = ConvSegment(
+            reading.substring(start, end),
+            converter.candidates(reading, start, end, leftRid, leftSurface = leftSurface),
+        )
         resized.expanded = true
         val rest = if (end < reading.length) {
-            converter.convert(reading.substring(end), resized.current.rid).map(::toConvSegment)
+            toConvSegments(converter.convert(reading.substring(end), resized.current.rid), resized.current.surface)
         } else {
             emptyList()
         }
@@ -171,8 +178,9 @@ class ComposingSession(
 
     /** 入力中に予測候補を選んで確定する。 */
     fun selectSuggestion(candidate: Candidate, index: Int): String {
-        if (index > 0) learning?.learn(candidate.reading, candidate.surface, candidate.lid, candidate.rid)
+        if (index > 0) learning?.learn(candidate.reading, candidate.surface, candidate.lid, candidate.rid, previousSurface)
         clear()
+        previousSurface = candidate.surface
         return candidate.surface
     }
 
@@ -180,9 +188,10 @@ class ComposingSession(
     fun commit(): String {
         val segs = segments
         val text = if (segs != null) {
-            for (seg in segs) {
+            for ((i, seg) in segs.withIndex()) {
                 if (seg.selected > 0) {
-                    learning?.learn(seg.reading, seg.current.surface, seg.current.lid, seg.current.rid)
+                    val previous = if (i == 0) previousSurface else segs[i - 1].current.surface
+                    learning?.learn(seg.reading, seg.current.surface, seg.current.lid, seg.current.rid, previous)
                 }
             }
             segs.joinToString("") { it.current.surface }
@@ -190,6 +199,7 @@ class ComposingSession(
             RomajiConverter.finish(buffer)
         }
         clear()
+        previousSurface = segs?.last()?.current?.surface
         return text
     }
 
@@ -207,6 +217,16 @@ class ComposingSession(
         return true
     }
 
+    /** カーソルが動いたときなど、直前の文脈が当てにならなくなったときに呼ぶ。 */
+    fun forgetContext() {
+        previousSurface = null
+    }
+
+    /** 変換せずに続けて入れた [text] を、次の変換の文脈にする。 */
+    fun continueContext(text: String) {
+        previousSurface = text
+    }
+
     fun clear() {
         buffer = StringBuilder()
         caret = 0
@@ -220,13 +240,23 @@ class ComposingSession(
         caret = reading.length
         val converted = converter.convert(reading)
         if (converted.isEmpty()) return
-        segments = converted.map(::toConvSegment)
+        segments = toConvSegments(converted, previousSurface)
         focus = 0
     }
 
-    /** mozc の文節履歴と同じく、過去に選んだ表記があればそれを先頭にする。 */
-    private fun toConvSegment(segment: Segment): ConvSegment {
-        val learned = learning?.exact(segment.reading)?.minByOrNull { it.cost }
+    /** 前から順に、直前の文節を文脈にして [toConvSegment] する。 */
+    private fun toConvSegments(converted: List<Segment>, previous: String?): List<ConvSegment> {
+        var before = previous
+        return converted.map { segment -> toConvSegment(segment, before).also { before = it.current.surface } }
+    }
+
+    /**
+     * mozc の文節履歴と同じく、過去に選んだ表記があればそれを先頭にする。
+     * 同じ直前の文節の後で選んだ表記があれば、それを語ごとの学習より優先する。
+     */
+    private fun toConvSegment(segment: Segment, previous: String?): ConvSegment {
+        val learned = previous?.let { learning?.inContext(it, segment.reading) }
+            ?: learning?.exact(segment.reading)?.minByOrNull { it.cost }
         val first = if (learned != null) {
             Candidate(learned.surface, learned.reading, learned.cost, learned.lid, learned.rid)
         } else {
@@ -252,7 +282,8 @@ class ComposingSession(
         val leftRid = segs.getOrNull(index - 1)?.current?.rid ?: Converter.BOS_EOS
         val rightLid = segs.getOrNull(index + 1)?.current?.lid ?: Converter.BOS_EOS
         val current = seg.current
-        val list = converter.candidates(reading, start, start + seg.reading.length, leftRid, rightLid)
+        val leftSurface = segs.getOrNull(index - 1)?.current?.surface ?: previousSurface.orEmpty()
+        val list = converter.candidates(reading, start, start + seg.reading.length, leftRid, rightLid, leftSurface = leftSurface)
         seg.candidates = listOf(current) + list.filter { it.surface != current.surface }
         seg.selected = 0
         seg.expanded = true

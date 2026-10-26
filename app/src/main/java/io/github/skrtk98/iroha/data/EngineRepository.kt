@@ -1,9 +1,11 @@
 package io.github.skrtk98.iroha.data
 
 import android.content.Context
+import android.graphics.Paint
 import android.util.Log
 import io.github.skrtk98.iroha.engine.conv.Converter
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
+import io.github.skrtk98.iroha.engine.lm.LanguageModel
 import io.github.skrtk98.iroha.engine.user.LearningStore
 import io.github.skrtk98.iroha.engine.user.UserDictionary
 import io.github.skrtk98.iroha.engine.user.UserDictionaryTsv
@@ -20,14 +22,39 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.nio.channels.FileChannel
+import java.util.concurrent.ConcurrentHashMap
 
 /** 読み込み済みの変換エンジン一式。 */
 class Engine(
     val dictionary: SystemDictionary,
+    languageModel: LanguageModel,
     val userDictionary: UserDictionary,
     val learning: LearningStore,
 ) {
-    val converter = Converter(dictionary, listOf(learning, userDictionary))
+    val converter = Converter(dictionary, listOf(learning, userDictionary), EmojiSupport::canShow, languageModel)
+}
+
+/** 端末のフォントで表示できる絵文字か。新しい絵文字は古い端末では豆腐になるので候補から外す。 */
+private object EmojiSupport {
+    private val paint = Paint()
+    private val cache = ConcurrentHashMap<String, Boolean>()
+
+    fun canShow(text: String): Boolean {
+        // hasGlyph は 1 つの字形で描けるかを見るので、普通の文字列には使えない。絵文字を含むときだけ確かめる。
+        // 1️⃣ のような囲み数字は、数字に異体字セレクタと囲み記号が続く
+        if (text.codePoints().noneMatch(::isEmojiPart)) return true
+        return cache.getOrPut(text) {
+            // Paint はスレッドセーフではない。候補は複数のスレッドから求める
+            synchronized(paint) { paint.hasGlyph(text) }
+        }
+    }
+
+    private fun isEmojiPart(codePoint: Int): Boolean =
+        Character.getType(codePoint) == Character.OTHER_SYMBOL.toInt() ||
+            Character.getType(codePoint) == Character.ENCLOSING_MARK.toInt() ||
+            codePoint == EMOJI_PRESENTATION
+
+    private const val EMOJI_PRESENTATION = 0xFE0F
 }
 
 /**
@@ -55,11 +82,8 @@ class EngineRepository(
     }
 
     private fun open(): Engine {
-        val dictionary = context.assets.openFd(DICTIONARY_ASSET).use { fd ->
-            FileInputStream(fd.fileDescriptor).channel.use { channel ->
-                SystemDictionary(channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.length))
-            }
-        }
+        val dictionary = SystemDictionary(mapAsset(DICTIONARY_ASSET))
+        val languageModel = LanguageModel(mapAsset(LANGUAGE_MODEL_ASSET))
         val userDictionary = UserDictionary(dictionary::posId)
         if (userDictionaryFile.exists()) {
             // 上限は新しく追加するときだけ効かせる。保存済みの辞書が上限を超えていても起動は止めない
@@ -68,7 +92,7 @@ class EngineRepository(
         }
         val learning = LearningStore()
         if (learningFile.exists()) learning.deserialize(learningFile.readText())
-        return Engine(dictionary, userDictionary, learning)
+        return Engine(dictionary, languageModel, userDictionary, learning)
     }
 
     /**
@@ -106,6 +130,13 @@ class EngineRepository(
         }
     }
 
+    /** 無圧縮で APK に入れた asset を mmap する。 */
+    private fun mapAsset(name: String) = context.assets.openFd(name).use { fd ->
+        FileInputStream(fd.fileDescriptor).channel.use { channel ->
+            channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.length)
+        }
+    }
+
     /** 一時ファイルに書いてから置き換える。一時ファイル名は書き込みごとに変え、途中で失敗したら消す。 */
     private fun writeAtomically(file: File, text: String) {
         val temp = File.createTempFile(file.name, ".tmp", file.parentFile)
@@ -120,5 +151,6 @@ class EngineRepository(
     private companion object {
         const val TAG = "EngineRepository"
         const val DICTIONARY_ASSET = "iroha.dic"
+        const val LANGUAGE_MODEL_ASSET = "iroha.lm"
     }
 }

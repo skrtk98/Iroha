@@ -87,4 +87,44 @@ class ComposingSessionTest {
         cancel()
         return preedit.text.length
     }
+
+    private fun convertAndPick(reading: String, surface: String): String {
+        session.insert(reading, romaji = false)
+        session.convertOrNext()
+        val index = session.focusedCandidates.indexOfFirst { it.surface == surface }
+        assumeTrue(index > 0)
+        return session.selectCandidate(index)
+    }
+
+    private fun convertTop(reading: String): String {
+        session.insert(reading, romaji = false)
+        session.convertOrNext()
+        return session.preedit.text.also { session.commit() }
+    }
+
+    @Test
+    fun learnsChoicesPerPrecedingSegment() {
+        // 「こうさく」の後では機械、「よい」の後では機会を選ぶ
+        convertTop("こうさく")
+        convertAndPick("きかい", "機械")
+        convertTop("よい")
+        convertAndPick("きかい", "機会")
+        // 語ごとの学習は最後の機会だが、こうさくの後では機械を覚えている
+        assertEquals("機会", convertTop("きかい").also { session.forgetContext() })
+        convertTop("こうさく")
+        assertEquals("機械", convertTop("きかい"))
+        convertTop("よい")
+        assertEquals("機会", convertTop("きかい"))
+    }
+
+    @Test
+    fun contextLearningSurvivesSaving() {
+        convertTop("こうさく")
+        convertAndPick("きかい", "機械")
+        convertTop("よい")
+        convertAndPick("きかい", "機会")
+        val restored = LearningStore().apply { deserialize(learning.serialize()) }
+        assertEquals("機械", restored.inContext("工作", "きかい")?.surface)
+        assertEquals(listOf("機会", "機械"), restored.entries.filter { it.reading == "きかい" }.map { it.surface })
+    }
 }

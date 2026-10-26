@@ -13,6 +13,7 @@ import io.github.skrtk98.iroha.engine.session.Preedit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +63,20 @@ class KeyboardController(
 
     /** 入力欄で文字列が選択されているか。選択の解除で、選択が無いのにカーソルを動かさないために使う。 */
     private var textSelected = false
+
+    /** 確定の後に出している続きの候補。 */
+    private var followUps: List<Candidate> = emptyList()
+    private var followUpJob: Job? = null
+
+    /** 続きの候補を引くための、直前に確定した文字列。続きの候補を選ぶとつなげていく。 */
+    private var committedTail = ""
+
+    /**
+     * 変換して確定した後のカーソル位置。そこから動いたら、続きの候補を閉じ、確定した語を次の変換の文脈にしない。
+     * 確定の直後は位置が届くのを待つ ([awaitingCommitCursor])。
+     */
+    private var commitCursor: Int? = null
+    private var awaitingCommitCursor = false
 
     init {
         scope.launch { collectSuggestions() }
@@ -132,7 +147,18 @@ class KeyboardController(
     fun onSelectionChanged(newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
         textSelected = newSelStart != newSelEnd
         val s = session ?: return
-        if (!s.isComposing) return
+        if (!s.isComposing) {
+            if (awaitingCommitCursor && !textSelected) {
+                commitCursor = newSelStart
+                awaitingCommitCursor = false
+            } else if (commitCursor.let { it != null && (it != newSelStart || textSelected) }) {
+                // 入力欄のタップやカーソルキーで確定した語の後ろから離れた
+                commitCursor = null
+                clearFollowUps()
+                s.forgetContext()
+            }
+            return
+        }
         if (candidatesStart < 0 || newSelStart < candidatesStart || newSelEnd > candidatesEnd) {
             s.clear()
             editor.finishComposing()
@@ -141,6 +167,8 @@ class KeyboardController(
     }
 
     fun onAction(action: KeyAction) {
+        // 続きの候補は次の操作までのもの。選んだときだけ、その続きをまた出す
+        if (action !is KeyAction.SelectFollowUp) clearFollowUps()
         when (action) {
             is KeyAction.Text -> inputText(action.text)
             KeyAction.Backspace -> backspace()
@@ -159,6 +187,8 @@ class KeyboardController(
             }
             is KeyAction.SelectCandidate -> selectCandidate(action.index)
             KeyAction.ToggleCandidateList -> _state.update { it.copy(candidateListExpanded = !it.candidateListExpanded) }
+            is KeyAction.SelectFollowUp -> selectFollowUp(action.index)
+            KeyAction.DismissFollowUps -> Unit
             is KeyAction.ResizeSegment -> if (session?.resizeSegment(action.delta) == true) render()
             is KeyAction.OpenPanel -> {
                 commitAll()
@@ -218,6 +248,8 @@ class KeyboardController(
         }
         val committed = s.insert(text, romaji = face == KeyboardFace.QwertyKana)
         if (committed.isNotEmpty()) editor.commitText(committed)
+        // シフト中の記号（～ や 「 など）は読みに入れ、英字と同じく 1 文字でシフトを戻す
+        if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
         render()
     }
 
@@ -244,7 +276,7 @@ class KeyboardController(
     private fun enter() {
         val s = session
         if (s != null && s.isComposing) {
-            editor.commitText(s.commit())
+            commitConverted(s.commit())
             render()
         } else {
             editor.sendEnter()
@@ -268,7 +300,7 @@ class KeyboardController(
             val candidate = suggestions.getOrNull(index) ?: return
             s.selectSuggestion(candidate, index)
         }
-        if (committed.isNotEmpty()) editor.commitText(committed)
+        if (committed.isNotEmpty()) commitConverted(committed)
         _state.update { it.copy(candidateListExpanded = false) }
         render()
     }
@@ -360,16 +392,62 @@ class KeyboardController(
         )
     }
 
+    /** 変換して確定した文字列を入れ、その続きの候補を出す。 */
+    private fun commitConverted(text: String) {
+        awaitCommitCursor()
+        editor.commitText(text)
+        committedTail = text
+        showFollowUps()
+    }
+
+    private fun selectFollowUp(index: Int) {
+        val candidate = followUps.getOrNull(index) ?: return
+        awaitCommitCursor()
+        session?.continueContext(candidate.surface)
+        editor.commitText(candidate.surface)
+        committedTail = (committedTail + candidate.surface).takeLast(FOLLOW_UP_TAIL)
+        showFollowUps()
+    }
+
+    private fun awaitCommitCursor() {
+        commitCursor = null
+        awaitingCommitCursor = true
+    }
+
+    private fun showFollowUps() {
+        val converter = engine?.converter ?: return
+        val tail = committedTail
+        followUpJob?.cancel()
+        followUpJob = scope.launch {
+            val list = withContext(Dispatchers.Default) { converter.zeroQuery(tail) }
+            followUps = list
+            _state.update { it.copy(followUps = list.map(Candidate::surface)) }
+        }
+    }
+
+    private fun clearFollowUps() {
+        if (followUpJob == null) return
+        followUpJob?.cancel()
+        followUpJob = null
+        followUps = emptyList()
+        _state.update { it.copy(followUps = emptyList()) }
+    }
+
     /** 未確定文字列があれば確定する。 */
     fun commitAll() {
         val s = session ?: return
         if (!s.isComposing) return
+        awaitCommitCursor()
         editor.commitText(s.commit())
         render()
     }
 
     private fun resetComposition() {
+        clearFollowUps()
         session?.clear()
+        session?.forgetContext()
+        commitCursor = null
+        awaitingCommitCursor = false
         hasPreedit = false
         suggestions = emptyList()
         suggestionRequests.value = null
@@ -446,3 +524,6 @@ class KeyboardController(
         }
     }
 }
+
+/** 続きの候補を引くときに見る、直前に確定した文字列の長さ。 */
+private const val FOLLOW_UP_TAIL = 40
