@@ -10,3 +10,8 @@ Tatoeba (https://tatoeba.org/)
   記事本文。ウィキニュースの寄稿者による。
   Creative Commons Attribution 4.0 International (CC BY 4.0)
   https://creativecommons.org/licenses/by/4.0/
+
+ABEJA-CC-JA (https://registry.opendata.aws/abeja-cc-ja/)
+  株式会社ABEJA が Common Crawl から集めた日本語のウェブ文書の一部。
+  Common Crawl Terms of Use の下で公開
+  https://commoncrawl.org/terms-of-use/

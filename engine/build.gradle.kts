@@ -35,7 +35,8 @@ tasks.register<JavaExec>("buildLanguageModel") {
     description = "Builds lm/iroha.lm from the corpus files given by -Piroha.corpus."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.skrtk98.iroha.engine.tools.BuildLanguageModelKt")
-    maxHeapSize = "3g"
+    // ウェブ文書を含むコーパス (約 1 億字) の 3-gram を数えるため
+    maxHeapSize = "8g"
     // コーパスを渡さなければ、ツールが使い方を出して失敗する
     val output = languageModelFile.asFile.absolutePath
     val corpus = providers.gradleProperty("iroha.corpus").map { it.split(',') }.orElse(emptyList())
