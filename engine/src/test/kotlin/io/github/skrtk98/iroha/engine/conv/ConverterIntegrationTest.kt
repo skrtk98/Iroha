@@ -25,6 +25,14 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun keepsContextAcrossOneCharacterParticles() {
+        assumeTrue(TestDictionary.languageModel != null)
+        // 「を」の後の「書く」は、その前の文字 (文 / 分) で言語モデルのコストが変わる
+        assertEquals("ローマ字文を書く", convert("ろーまじぶんをかく"))
+        assertTrue(convert("かにかまれる").startsWith("蚊に"))
+    }
+
+    @Test
     fun splitsIntoSegments() {
         val segments = converter.convert("わたしのなまえはなかのです").map { it.reading }
         assertEquals(listOf("わたしの", "なまえは", "なかのです"), segments)

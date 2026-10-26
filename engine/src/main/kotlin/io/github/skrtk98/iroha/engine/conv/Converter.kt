@@ -31,9 +31,6 @@ class Converter(
         val end: Int,
         val word: WordEntry,
     ) {
-        var total = Int.MAX_VALUE
-        var prev: Node? = null
-
         /** 言語モデルで、語の 3 文字目以降に掛かるコスト。前の語によらないので一度だけ求める。NaN は未計算。 */
         var innerSequenceCost = Float.NaN
     }
@@ -83,17 +80,17 @@ class Converter(
         }
 
         /**
-         * [previous] の後に [node] を置くコスト。[previous] が 1 文字なら、その前の語 ([Node.prev]) から
-         * もう 1 文字を借りる。前の語が無ければ [before] (前の文節の表記など。空なら文頭) を文脈にする。
+         * [previous] の後に [node] を置くコスト。[previous] が 1 文字のときに要るその前の文字は分からないので、文頭として近似する。
+         * 前の語が無ければ [before] (前の文節の表記など。空なら文頭) を文脈にする。
          */
         fun cost(previous: Node?, node: Node, before: String = ""): Int {
             if (previous == null) return cost(before.getOrNull(before.length - 2), before.lastOrNull(), node)
             val surface = previous.word.surface
-            val a = if (surface.length >= 2) surface[surface.length - 2] else previous.prev?.word?.surface?.lastOrNull()
-            return cost(a, surface.lastOrNull(), node)
+            return cost(surface.getOrNull(surface.length - 2), surface.lastOrNull(), node)
         }
 
-        private fun cost(first: Char?, second: Char?, node: Node): Int {
+        /** 直前の 2 文字が [first] [second] (null は文頭) のときに [node] を置くコスト。 */
+        fun cost(first: Char?, second: Char?, node: Node): Int {
             val text = node.word.surface
             if (text.isEmpty()) return 0
             val a = first?.let(LanguageModel::normalize) ?: LanguageModel.BOS
@@ -121,7 +118,18 @@ class Converter(
     fun convert(reading: String, leftRid: Int = BOS_EOS): List<Segment> {
         if (reading.isEmpty()) return emptyList()
         val path = bestPath(reading, 0, reading.length, leftRid, BOS_EOS)
-        return applyCollocations(reading, splitSegments(reading, path), leftRid)
+        return applyCollocations(reading, splitSegments(reading, path), leftRid).map(::preferKanjiNumber)
+    }
+
+    /**
+     * mozc と同じく、かなで打った数は漢数字を先に出す (いちおく → 一億、にせんえんさつ → 二千円札)。
+     * 辞書では「いち」の「1」のほうが「一」より安いので、そのままでは算用数字が先になる。算用数字は候補に残る。
+     */
+    private fun preferKanjiNumber(segment: Segment): Segment {
+        val top = segment.candidates.first()
+        if (dictionary.posClass(top.lid) != PosClass.Number || segment.reading.any { it.isDigit() }) return segment
+        val kanji = NumberVariants.toKanjiNumbers(top.surface) ?: return segment
+        return Segment(segment.reading, listOf(top.copy(surface = kanji)) + segment.candidates.drop(1))
     }
 
     /**
@@ -196,7 +204,7 @@ class Converter(
             ranked.putIfAbsent(candidate.surface, candidate)
         }
         // 辞書の上位の後に記号と絵文字を挟み、顔文字と単漢字は辞書の候補の後ろに付ける
-        val dictionaryCandidates = withNumberVariants(ranked.values)
+        val dictionaryCandidates = withNumberVariants(ranked.values, segmentReading)
         val ordered = dictionaryCandidates.take(CANDIDATES_BEFORE_SYMBOLS) +
             extraCandidates(ExtraKind.Symbol, segmentReading) +
             extraCandidates(ExtraKind.Emoji, segmentReading) +
@@ -215,12 +223,29 @@ class Converter(
         return result.values.toList()
     }
 
-    /** 数で始まる候補のすぐ後に、その数の別の書き方 (3千円 → 三千円, 3000円, 3,000円 …) を置く。 */
-    private fun withNumberVariants(candidates: Collection<Candidate>): List<Candidate> = buildList {
+    /**
+     * 数で始まる候補のすぐ後に、その数の別の書き方 (3千円 → 三千円, 3000円, 3,000円 …) を置く。
+     * かなで打った数は、mozc と同じく漢数字の書き方を先に置く ([preferKanjiNumber] と同じ順)。
+     */
+    private fun withNumberVariants(candidates: Collection<Candidate>, reading: String): List<Candidate> = buildList {
+        // 品詞が数の語だけを書き換える。一人・一階のように、数の品詞でも辞書にある語も含める
+        val numberWords by lazy {
+            dictionary.exactSearch(reading).filter { dictionary.posClass(it.lid) == PosClass.Number }.mapTo(HashSet()) { it.surface }
+        }
+        val kana = reading.none { it.isDigit() }
         for (candidate in candidates) {
-            add(candidate)
-            if (dictionary.posClass(candidate.lid) != PosClass.Number) continue
-            NumberVariants.of(candidate.surface).forEach { add(candidate.copy(surface = it)) }
+            if (NumberVariants.of(candidate.surface).isEmpty() ||
+                dictionary.posClass(candidate.lid) != PosClass.Number &&
+                candidate.surface !in numberWords &&
+                !NumberVariants.isKanjiNumber(candidate.surface)
+            ) {
+                add(candidate)
+                continue
+            }
+            val kanji = if (kana) NumberVariants.toKanjiNumbers(candidate.surface) else null
+            val surfaces = listOfNotNull(kanji, candidate.surface) + NumberVariants.of(candidate.surface)
+            // 重複を残すと、記号より前に置く候補の枠を同じ表記が食う
+            surfaces.distinct().forEach { add(candidate.copy(surface = it)) }
         }
     }
 
@@ -372,46 +397,78 @@ class Converter(
 
     private fun WordEntry.toCandidate() = Candidate(surface, reading, cost, lid, rid)
 
+    /** ビタビの途中の経路。[node] で終わり、[total] はそこまでのコスト。 */
+    private class PathEnd(val node: Node, val total: Int, val prev: PathEnd?) {
+        /** 次の語から見た直前の 2 文字のうち前のほう。語が 1 文字なら、その前の語から借りる。 */
+        val beforeLast: Char?
+            get() = node.word.surface.let { if (it.length >= 2) it[it.length - 2] else prev?.node?.word?.surface?.lastOrNull() }
+    }
+
     private fun bestPath(reading: String, start: Int, end: Int, leftRid: Int, rightLid: Int): List<Node> {
         val nodesAt = buildLattice(reading, start, end)
         val scorer = sequenceScorer()
-        val endingAt = Array(end - start + 1) { ArrayList<Node>() }
+        val endingAt = Array(end - start + 1) { ArrayList<PathEnd>() }
+        val kept = ArrayList<PathEnd>(CONTEXT_PATHS)
         for (pos in start until end) {
             for (node in nodesAt[pos - start]) {
-                val prevs = if (pos == start) null else endingAt[pos - start]
-                if (prevs == null) {
+                if (pos == start) {
                     // mozc と同じく、変換する範囲の先頭と末尾の語には boundary.def のコストを足す
-                    node.total = dictionary.connectionCost(leftRid, node.word.lid) + node.word.cost +
+                    val total = dictionary.connectionCost(leftRid, node.word.lid) + node.word.cost +
                         dictionary.prefixPenalty(node.word.lid) + (scorer?.cost(null, node) ?: 0)
-                } else {
-                    for (p in prevs) {
-                        val base = p.total + dictionary.connectionCost(p.word.rid, node.word.lid) + node.word.cost
-                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
-                        if (base >= node.total) continue
-                        val t = base + (scorer?.cost(p, node) ?: 0)
-                        if (t < node.total) {
-                            node.total = t
-                            node.prev = p
-                        }
-                    }
-                    if (node.prev == null) continue
+                    endingAt[node.end - start].add(PathEnd(node, total, null))
+                    continue
                 }
-                endingAt[node.end - start].add(node)
+                // 次の語の言語モデルのコストは、この語が 1 文字ならその前の文字にもよる (字を|書く と 地を|書く)。
+                // 1 文字の助詞などでは、前の文字の違う経路を CONTEXT_PATHS 本まで残す。全ての 1 文字の語に広げると遅すぎる。
+                val limit = if (scorer != null && node.word.surface.length == 1 &&
+                    dictionary.posClass(node.word.lid) == PosClass.Functional
+                ) {
+                    CONTEXT_PATHS
+                } else {
+                    1
+                }
+                kept.clear()
+                for (p in endingAt[pos - start]) {
+                    val base = p.total + dictionary.connectionCost(p.node.word.rid, node.word.lid) + node.word.cost
+                    // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
+                    if (kept.size == limit && base >= kept.last().total) continue
+                    val t = base + (scorer?.cost(p.beforeLast, p.node.word.surface.lastOrNull(), node) ?: 0)
+                    // 言語モデルは全角英数字を半角として引くので、文脈もそろえて比べる
+                    val context = p.node.word.surface.lastOrNull()?.let(LanguageModel::normalize)
+                    val same = if (limit == 1) {
+                        kept.firstOrNull()
+                    } else {
+                        kept.firstOrNull { it.prev?.node?.word?.surface?.lastOrNull()?.let(LanguageModel::normalize) == context }
+                    }
+                    if (same != null) {
+                        if (t >= same.total) continue
+                        kept.remove(same)
+                    } else if (kept.size == limit) {
+                        if (t >= kept.last().total) continue
+                        kept.removeAt(kept.size - 1)
+                    }
+                    val index = kept.indexOfFirst { it.total > t }.let { if (it < 0) kept.size else it }
+                    kept.add(index, PathEnd(node, t, p))
+                }
+                // 次の語の言語モデルで逆転しうる差の経路だけを残す
+                for (path in kept) {
+                    if (path.total - kept[0].total < CONTEXT_MARGIN) endingAt[node.end - start].add(path)
+                }
             }
         }
-        var bestLast: Node? = null
+        var bestLast: PathEnd? = null
         var bestTotal = Int.MAX_VALUE
-        for (node in endingAt[end - start]) {
-            val t = node.total + dictionary.connectionCost(node.word.rid, rightLid) + dictionary.suffixPenalty(node.word.rid)
+        for (p in endingAt[end - start]) {
+            val t = p.total + dictionary.connectionCost(p.node.word.rid, rightLid) + dictionary.suffixPenalty(p.node.word.rid)
             if (t < bestTotal) {
                 bestTotal = t
-                bestLast = node
+                bestLast = p
             }
         }
         val path = ArrayList<Node>()
         var cur = bestLast
         while (cur != null) {
-            path.add(cur)
+            path.add(cur.node)
             cur = cur.prev
         }
         path.reverse()
@@ -502,6 +559,12 @@ class Converter(
 
         /** mozc の品質回帰テストで最もよく当たった値。 */
         const val LANGUAGE_MODEL_WEIGHT = 350f
+
+        /** 1 文字の助詞などで、前の文字の違いとして残す経路の数。 */
+        private const val CONTEXT_PATHS = 4
+
+        /** 最良の経路とのコストの差がこれ未満の経路だけを残す。品質回帰テストで 1000 では足りず、3000 では変わらなかった。 */
+        private const val CONTEXT_MARGIN = 2000
         private const val RUN_COST = 4000
         private const val PREDICT_SCAN = 3000
         private const val PREDICT_SCAN_SHORT = 800

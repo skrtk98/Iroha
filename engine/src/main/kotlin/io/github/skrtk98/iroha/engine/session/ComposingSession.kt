@@ -148,9 +148,14 @@ class ComposingSession(
         val leftRid = segs.getOrNull(focus - 1)?.current?.rid ?: Converter.BOS_EOS
         val end = start + newLength
         val leftSurface = segs.getOrNull(focus - 1)?.current?.surface ?: previousSurface.orEmpty()
+        val resizedReading = reading.substring(start, end)
         val resized = ConvSegment(
-            reading.substring(start, end),
-            converter.candidates(reading, start, end, leftRid, leftSurface = leftSurface),
+            resizedReading,
+            withLearnedFirst(
+                converter.candidates(reading, start, end, leftRid, leftSurface = leftSurface),
+                resizedReading,
+                segs.getOrNull(focus - 1)?.current?.surface ?: previousSurface,
+            ),
         )
         resized.expanded = true
         val rest = if (end < reading.length) {
@@ -254,15 +259,20 @@ class ComposingSession(
      * mozc の文節履歴と同じく、過去に選んだ表記があればそれを先頭にする。
      * 同じ直前の文節の後で選んだ表記があれば、それを語ごとの学習より優先する。
      */
-    private fun toConvSegment(segment: Segment, previous: String?): ConvSegment {
-        val learned = previous?.let { learning?.inContext(it, segment.reading) }
-            ?: learning?.exact(segment.reading)?.minByOrNull { it.cost }
-        val first = if (learned != null) {
-            Candidate(learned.surface, learned.reading, learned.cost, learned.lid, learned.rid)
-        } else {
-            segment.candidates.first()
-        }
-        return ConvSegment(segment.reading, listOf(first))
+    private fun toConvSegment(segment: Segment, previous: String?): ConvSegment =
+        ConvSegment(segment.reading, listOf(learned(segment.reading, previous) ?: segment.candidates.first()))
+
+    private fun learned(reading: String, previous: String?): Candidate? {
+        val learned = previous?.let { learning?.inContext(it, reading) }
+            ?: learning?.exact(reading)?.minByOrNull { it.cost }
+            ?: return null
+        return Candidate(learned.surface, learned.reading, learned.cost, learned.lid, learned.rid)
+    }
+
+    /** 文節を伸び縮みさせたときも、通常の変換と同じく過去に選んだ表記を先頭にする。 */
+    private fun withLearnedFirst(candidates: List<Candidate>, reading: String, previous: String?): List<Candidate> {
+        val first = learned(reading, previous) ?: return candidates
+        return listOf(first) + candidates.filter { it.surface != first.surface }
     }
 
     private fun moveCandidate(delta: Int) {
