@@ -10,13 +10,14 @@ import kotlin.system.exitProcess
 /**
  * ウェブの文から、書き言葉のコーパスに近い文を選ぶコマンド (Moore-Lewis 法)。
  * 書き言葉のコーパスで作ったモデルと、ウェブの文の一部で作った同じくらいの大きさのモデルで各文を採点し、
- * 1 文字あたりの「書き言葉らしさ」の高い順に、合計の文字数が上限に達するまで選ぶ。選んだ文は元の順で書く。
+ * 1 文字あたりの「書き言葉らしさ」の高い順に、合計の文字数が指定の文字数に達するまで選ぶ (最後の 1 文のぶん超えることがある)。
+ * 選んだ文は元の順で書く。
  *
- * 使い方: SelectWebSentences <出力ファイル> <文字数の上限> <書き言葉のコーパス> <ウェブの文>
+ * 使い方: SelectWebSentences <出力ファイル> <文字数> <書き言葉のコーパス> <ウェブの文>
  */
 fun main(args: Array<String>) {
     if (args.size != 4) {
-        System.err.println("usage: SelectWebSentences <output> <max-chars> <in-domain-corpus> <web-sentences>")
+        System.err.println("usage: SelectWebSentences <output> <chars> <in-domain-corpus> <web-sentences>")
         exitProcess(2)
     }
     val output = File(args[0])
@@ -73,7 +74,8 @@ fun main(args: Array<String>) {
     }
 
     output.absoluteFile.parentFile.mkdirs()
-    val temp = File(output.absoluteFile.parentFile, "${output.name}.part")
+    // 入力や同時に動く別の実行と重ならない名前で書き、書き終えてから置き換える
+    val temp = File.createTempFile("${output.name}.", ".part", output.absoluteFile.parentFile)
     temp.bufferedWriter().use { out ->
         webFile.useLines { lines ->
             lines.forEachIndexed { i, s ->
