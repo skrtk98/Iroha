@@ -15,7 +15,9 @@ import java.nio.channels.FileChannel
  * IME は打鍵のたびに入力中の読み全体で suggest を呼ぶので、読みの前から 1 文字ずつ延ばして測る。
  * 測るのは読み込み済みの変換 1 回の処理時間で、IME を開いてからの読み込みや、打鍵が重なったときの待ちは含まない。
  *
- * 実行: ./gradlew :app:connectedDebugAndroidTest 後に adb logcat -s IrohaBench
+ * 実行: connectedDebugAndroidTest は終了後にアプリをアンインストールし、端末の辞書と学習結果を消すので使わない。
+ * debug と androidTest の APK を adb install -r で入れ、am instrument で走らせて adb logcat -s IrohaBench を見る
+ * (手順は docs/release.md)。
  * debug ビルドはデバッグ可能なので、実際より遅く出る。実際に近い値を見るときは、
  * 一時的に buildTypes の debug に isDebuggable = false を足して測る。
  */
