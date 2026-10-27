@@ -33,7 +33,8 @@ scripts/lm/prepare_corpus.sh /tmp/iroha-corpus
     -Piroha.corpus=/tmp/iroha-corpus/corpus.txt,/tmp/iroha-corpus/corpus.txt,/tmp/iroha-corpus/corpus.txt,/tmp/iroha-corpus/selected.txt
 ```
 
-ABEJA-CC-JA から約 1.4GB を取り出す。`corpus.txt` が上の SHA-256 と同じなら、`iroha.lm` も同じものができる。
+ABEJA-CC-JA から約 1.4GB を取り出す。`corpus.txt` が上の SHA-256 と同じなら、`iroha.lm` も同じものができる
+（JDK 17 で確かめた。3-gram の指紋が衝突したときは `HashMap` の順で先に来たほうを残すので、JVM の実装によっては変わりうる）。
 
 作り直したら `:engine:test` の `quality:` の行で精度を比べ、`Converter.LANGUAGE_MODEL_WEIGHT` を見直す。
 手元に Microsoft Research IME Corpus があれば、`-Diroha.msImeDir=<展開した場所>` を付けると `msime` の行で新聞記事 6,000 文の精度も比べられる。
@@ -51,11 +52,15 @@ ABEJA-CC-JA から約 1.4GB を取り出す。`corpus.txt` が上の SHA-256 と
 | `corpus.txt` ＋ `selected.txt` | 20.0MB | 510 | 1,637 | 4.86% |
 | `corpus.txt` ×3 ＋ `selected.txt` | 20.8MB | 512 | 1,630 | 4.82% |
 | `corpus.txt` ×3 ＋ `selected.txt`、重み 400（採用） | 20.8MB | 512 | 1,641 | 4.80% |
+| `corpus.txt` ×3 ＋ `web.txt` から無作為に 8,500 万字、重み 400 | 22.1MB | 502 | 1,532 | 5.16% |
 
-mozc の評価セット（79 件）は、重み 350 で `selected.txt` を使ったモデルが 78 件、ほかは 77 件。採用したモデルは重み 400 で 77 件。
+mozc の評価セット（79 件）は、重み 350 で `selected.txt` を使ったモデルが 78 件、ほかは 77 件。採用したモデルは重み 400 で 77 件
+（「親のありがたみ」が「親の有難み」になる）。
 採用したモデルで重みを振ると、300・350・400・450 で品質回帰テストが 515・512・512・510 件、MS IME の完全一致が 1,612・1,630・1,641・1,647 文。
-350 以下では「蚊に噛まれる」が「家に噛まれる」になるので 400 にした。選んだ文は、無作為に同じ量を取るより、同じ大きさのまま
-どの評価でも良い。ただし `corpus.txt` にはウィキニュースが入っているので、新聞記事の MS IME は選び方の恩恵を受けやすい。
+350 以下では「蚊に噛まれる」が「家に噛まれる」になるので 400 にした。重みは品質回帰テストと MS IME を見て決めたので、
+これらとは別の入力で良くなるかは確かめていない。
+同じ `web.txt` から無作為に同じ量を取ったモデルと比べると、選んだ文のほうが小さく、品質回帰テストと MS IME の精度も高い。
+ただし `corpus.txt` にはウィキニュースが入っているので、新聞記事の MS IME は選び方の恩恵を受けやすい。
 
 ## 試して採らなかったコーパス
 
