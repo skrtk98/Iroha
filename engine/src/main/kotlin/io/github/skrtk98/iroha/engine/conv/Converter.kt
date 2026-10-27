@@ -557,8 +557,8 @@ class Converter(
         const val BOS_EOS = 0
         private const val UNKNOWN_COST = 12000
 
-        /** mozc の品質回帰テストで最もよく当たった値。 */
-        const val LANGUAGE_MODEL_WEIGHT = 350f
+        /** mozc の品質回帰テストで最もよく当たった値 (300〜450 を試し、400 と 350 が同じ件数で、400 は「蚊に噛まれる」も当たる)。 */
+        const val LANGUAGE_MODEL_WEIGHT = 400f
 
         /** 1 文字の助詞などで、前の文字の違いとして残す経路の数。 */
         private const val CONTEXT_PATHS = 4

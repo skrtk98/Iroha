@@ -37,7 +37,8 @@ class ConverterIntegrationTest {
         repeat(100) { builder.add("ローマ字分を足す") }
         repeat(30) { builder.add("ローマ字文を書く") }
         val model = LanguageModel(ByteBuffer.wrap(ByteArrayOutputStream().also(builder::write).toByteArray()))
-        val withModel = Converter(dictionary, languageModel = model)
+        // 重みの既定値が変わっても仕組みだけを確かめられるよう、このモデルに合わせた重みで固定する
+        val withModel = Converter(dictionary, languageModel = model, languageModelWeight = 350f)
         assertEquals("ローマ字文を書く", withModel.convert("ろーまじぶんをかく").joinToString("") { it.candidates.first().surface })
     }
 
