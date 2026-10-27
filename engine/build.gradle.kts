@@ -43,6 +43,16 @@ tasks.register<JavaExec>("buildLanguageModel") {
     argumentProviders.add(CommandLineArgumentProvider { listOf(output, "2") + corpus.get() })
 }
 
+// ウェブの文から書き言葉に近い文を選ぶ。lm/README.md の手順で、-Piroha.select=<出力>,<文字数>,<書き言葉>,<ウェブ> を付けて実行する
+tasks.register<JavaExec>("selectWebSentences") {
+    description = "Selects web sentences close to the written corpus, given by -Piroha.select."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.skrtk98.iroha.engine.tools.SelectWebSentencesKt")
+    maxHeapSize = "8g"
+    val select = providers.gradleProperty("iroha.select").map { it.split(',') }.orElse(emptyList())
+    argumentProviders.add(CommandLineArgumentProvider { select.get() })
+}
+
 configurations.consumable("dictionary")
 artifacts.add("dictionary", dictionaryFile) { builtBy(buildDictionary) }
 artifacts.add("dictionary", languageModelFile)
