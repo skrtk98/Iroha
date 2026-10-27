@@ -28,9 +28,57 @@ internal object NumberVariants {
             if (value >= 10_000) add(toArabicWithUnits(value))
             if (value >= 1_000) add("%,d".format(value))
             add(toFullWidth(arabic))
+            // 日付の 二〇 などのため。長い数では使わない
+            if (value in 10..9999) add(toKanjiDigits(arabic))
         }
         return forms.map { it + rest }.filter { it != surface }.distinct()
     }
+
+    /** [surface] 全体が位取りの普通の書き方の漢数字か (十万、三千)。万一 のような語は除く。 */
+    fun isKanjiNumber(surface: String): Boolean {
+        if (surface.isEmpty() || surface.any { it !in KANJI_DIGITS && it !in SMALL_UNITS && it !in BIG_UNITS }) return false
+        val value = parse(surface) ?: return false
+        return surface == toKanji(value)
+    }
+
+    /** 算用数字を含む数をすべて漢数字に直した表記 (1億 → 一億、2時3分 → 二時三分)。直す数が無ければ null。 */
+    fun toKanjiNumbers(surface: String): String? {
+        val out = StringBuilder()
+        var changed = false
+        var i = 0
+        while (i < surface.length) {
+            if (!isNumberChar(surface[i])) {
+                out.append(surface[i++])
+                continue
+            }
+            var end = i
+            while (end < surface.length && isNumberChar(surface[end])) end++
+            val number = surface.substring(i, end)
+            val value = parse(number)
+            if (value != null && number.any { it in '0'..'9' || it in '０'..'９' } && isPlainNumber(surface, i, end)) {
+                out.append(toKanji(value))
+                changed = true
+            } else {
+                out.append(number)
+            }
+            i = end
+        }
+        return if (changed) out.toString() else null
+    }
+
+    /**
+     * [surface] の [start]..[end] の数が、単独の数として読めるか。型番 (M1A2)、小数 (3.14)、
+     * 区切り (1,000、100-0001) の一部や、0 で始まる数字の並びは漢数字にすると崩れる。
+     */
+    private fun isPlainNumber(surface: String, start: Int, end: Int): Boolean {
+        if (end - start > 1 && (surface[start] == '0' || surface[start] == '０')) return false
+        val before = surface.getOrNull(start - 1)
+        val after = surface.getOrNull(end)
+        return (before == null || !isJoiner(before)) && (after == null || !isJoiner(after))
+    }
+
+    private fun isJoiner(c: Char) =
+        c in 'A'..'Z' || c in 'a'..'z' || c in 'Ａ'..'Ｚ' || c in 'ａ'..'ｚ' || c in ".．,，-－:：/／"
 
     private fun isNumberChar(c: Char) =
         c in '0'..'9' || c in '０'..'９' || c in KANJI_DIGITS || c in SMALL_UNITS || c in BIG_UNITS
@@ -136,6 +184,9 @@ internal object NumberVariants {
         if (rest > 0) out.append(rest)
         return out.toString()
     }
+
+    /** 1 桁ずつの漢数字 (20 → 二〇)。 */
+    private fun toKanjiDigits(arabic: String) = arabic.map { KANJI_DIGITS[it - '0'] }.joinToString("")
 
     private fun toFullWidth(arabic: String) = arabic.map { '０' + (it - '0') }.joinToString("")
 }
