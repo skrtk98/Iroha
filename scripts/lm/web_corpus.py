@@ -38,8 +38,8 @@ def main():
                     for s in SENTENCE_END.split(line):
                         s = s.strip()
                         # 短すぎる文と、かな・漢字の少ない文 (英語、記号、コード) は捨てる
-                        # タブはモデルを作るツールが区切りとして扱うので、含む文も捨てる
-                        if not 8 <= len(s) <= 200 or len(JA.findall(s)) < len(s) * 0.6 or '\t' in s:
+                        # タブはモデルを作るツールが区切りとして、CR は Kotlin の行の読み込みが改行として扱うので、含む文も捨てる
+                        if not 8 <= len(s) <= 200 or len(JA.findall(s)) < len(s) * 0.6 or '\t' in s or '\r' in s:
                             continue
                         # ナビゲーションや署名など、ページをまたいで繰り返す定型文を数えすぎないよう 1 回だけ残す
                         h = hashlib.blake2b(s.encode(), digest_size=8).digest()

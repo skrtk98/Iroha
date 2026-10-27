@@ -557,8 +557,11 @@ class Converter(
         const val BOS_EOS = 0
         private const val UNKNOWN_COST = 12000
 
-        /** mozc の品質回帰テストで最もよく当たった値。 */
-        const val LANGUAGE_MODEL_WEIGHT = 350f
+        /**
+         * 言語モデルの重み。300〜450 を試すと mozc の品質回帰テストは 300 が最も多く当たるが、350 以下では「蚊に噛まれる」を外す。
+         * 400 は 350 と同じ件数で「蚊に噛まれる」が当たり、新聞記事 (MS IME) の精度も高い。代わりに mozc の評価セットを 1 件外す。
+         */
+        const val LANGUAGE_MODEL_WEIGHT = 400f
 
         /** 1 文字の助詞などで、前の文字の違いとして残す経路の数。 */
         private const val CONTEXT_PATHS = 4
