@@ -31,6 +31,10 @@ JDK 17 が必要です。初回のビルドで mozc の辞書を取得して変�
 署名の設定（`signing.properties`）が無ければ、未署名の APK を出力します。署名の方法は
 `signing.properties.example` を参照してください。
 
+## 設計と開発の記録
+
+設計で決めたことの理由、試して採らなかった案、リリース手順は [docs/](docs/README.md) にあります。
+
 ## ライセンス
 
 [Apache License 2.0](LICENSE)
