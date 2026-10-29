@@ -51,7 +51,10 @@ F-Droid で私たちの署名を使うには、同じソースから同じ APK �
 - APK に Google の依存関係情報ブロックを入れない（`app/build.gradle.kts` の `dependenciesInfo`）。Google が署名したブロックで、
   F-Droid は中身を確かめられない。Play に出す AAB には残す。
 - mozc から取得するファイル（2026-10-27 時点で 35 個、うち 2 個はテスト用）の SHA-256 を `MozcImporter.FILE_SHA256` に固定している。書き換えられていたらビルドが止まる。
-- 言語モデルはスクリプトから作り直せる（[engine/lm/README.md](../engine/lm/README.md)）。
+- 言語モデルはスクリプトから作り直せる（[engine/lm/README.md](../engine/lm/README.md)）。ただし Tatoeba は最新版しか配布されず、
+  2026-10-29 に取り直したものはモデルを作ったとき（2026-10-23）と中身が違った。ウィキニュースと ABEJA-CC-JA の文は同じだった。
+  今の `iroha.lm` をそのまま作り直すことはもうできない。次に作り直すときは、コーパス（Tatoeba は既定で CC BY 2.0 FR〔文ごとに CC0 などの例外あり〕、ウィキニュースは CC BY 4.0 で、どちらも再配布できる）を
+  GitHub Releases などに保存しておく。
 - **差分ビルドでは APK が一致しない**（R8 の出力が変わる）。release は必ず `clean` から、リリースはタグからまっさらに clone してビルドする。
 - 確認済み（2026-10-27）：パスの違う 2 か所に clone し、Gradle のキャッシュを使わずにビルドした APK はバイト単位で一致した。
   Baseline Profile のファイル（`baseline.prof` / `.profm`）も一致した。
