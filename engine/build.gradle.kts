@@ -73,5 +73,11 @@ tasks.test {
         inputs.files(fileTree(dir) { include("*.read.3000.txt", "*.ref.3000.txt") }).withPropertyName("msImeCorpus")
     }
     providers.systemProperty("iroha.msImeMisses").orNull?.let { systemProperty("iroha.msImeMisses", it) }
+    // scripts/eval/prepare_eval.sh で作った評価データで測るとき用 (-Diroha.evalDir=…)
+    providers.systemProperty("iroha.evalDir").orNull?.let { dir ->
+        systemProperty("iroha.evalDir", dir)
+        inputs.files(fileTree(dir) { include("*.tsv") }).withPropertyName("evalSets")
+    }
+    providers.systemProperty("iroha.evalMisses").orNull?.let { systemProperty("iroha.evalMisses", it) }
     maxHeapSize = "1g"
 }
