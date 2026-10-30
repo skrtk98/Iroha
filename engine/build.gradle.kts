@@ -28,7 +28,8 @@ val buildDictionary = tasks.register<JavaExec>("buildDictionary") {
 }
 
 // 文字の並びの言語モデル。コーパスは固定版を取得できないため、作ったモデルをリポジトリに置く。
-// 作り直すときは lm/README.md の手順でコーパスを用意し、-Piroha.corpus=<ファイル,...> を付けて実行する
+// 作り直すときは lm/README.md の手順でコーパスを用意し、-Piroha.corpus=<ファイル,...> を付けて実行する。
+// -Piroha.lmPrune=<しきい値> を付けると、エントロピーで 3-gram を刈り込む。-Piroha.lmOutput=<ファイル> で書き出し先を変えられる
 val languageModelFile = layout.projectDirectory.file("lm/iroha.lm")
 
 tasks.register<JavaExec>("buildLanguageModel") {
@@ -38,9 +39,10 @@ tasks.register<JavaExec>("buildLanguageModel") {
     // ウェブ文書を含むコーパス (約 1 億字) の 3-gram を数えるため
     maxHeapSize = "8g"
     // コーパスを渡さなければ、ツールが使い方を出して失敗する
-    val output = languageModelFile.asFile.absolutePath
+    val output = providers.gradleProperty("iroha.lmOutput").orElse(languageModelFile.asFile.absolutePath)
     val corpus = providers.gradleProperty("iroha.corpus").map { it.split(',') }.orElse(emptyList())
-    argumentProviders.add(CommandLineArgumentProvider { listOf(output, "2") + corpus.get() })
+    val prune = providers.gradleProperty("iroha.lmPrune").map { listOf("--prune=$it") }.orElse(emptyList())
+    argumentProviders.add(CommandLineArgumentProvider { listOf(output.get(), "2") + prune.get() + corpus.get() })
 }
 
 // ウェブの文から書き言葉に近い文を選ぶ。lm/README.md の手順で、-Piroha.select=<出力>,<文字数>,<書き言葉>,<ウェブ> を付けて実行する
