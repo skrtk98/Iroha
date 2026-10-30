@@ -2,6 +2,8 @@ package io.github.skrtk98.iroha.engine.session
 
 import io.github.skrtk98.iroha.engine.TestDictionary
 import io.github.skrtk98.iroha.engine.conv.Converter
+import io.github.skrtk98.iroha.engine.lm.LanguageModel
+import io.github.skrtk98.iroha.engine.lm.LanguageModelBuilder
 import io.github.skrtk98.iroha.engine.user.LearningStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,6 +11,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 
 class ComposingSessionTest {
     private lateinit var learning: LearningStore
@@ -110,6 +114,28 @@ class ComposingSessionTest {
         session.insert(reading, romaji = false)
         session.convertOrNext()
         return session.preedit.text.also { session.commit() }
+    }
+
+    @Test
+    fun keepsLanguageContextAcrossOneWordCommits() {
+        // 「を」の前が「字」か「絵」かで「かく」の表記が変わる言語モデル。
+        // 「絵」「を」と 1 語ずつ確定しても、まとめて「絵を」と確定したときと同じく 2 文字の文脈で変換する
+        val builder = LanguageModelBuilder(minTrigramCount = 1)
+        repeat(100) { builder.add("字を書く") }
+        repeat(100) { builder.add("絵を描く") }
+        val model = LanguageModel(ByteBuffer.wrap(ByteArrayOutputStream().also(builder::write).toByteArray()))
+        val withModel = ComposingSession(Converter(TestDictionary.instance!!, languageModel = model, languageModelWeight = 350f))
+        fun convert(): String {
+            withModel.insert("かく", romaji = false)
+            withModel.convertOrNext()
+            return withModel.preedit.text.also { withModel.commit(); withModel.forgetContext() }
+        }
+        withModel.continueContext("絵を")
+        val together = convert()
+        withModel.continueContext("絵")
+        withModel.continueContext("を")
+        assertEquals("描く", together)
+        assertEquals(together, convert())
     }
 
     @Test

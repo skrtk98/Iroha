@@ -109,15 +109,21 @@ class Converter(
         }
     }
 
+    /**
+     * 言語モデルの文脈にする、[text] の最後の文の部分。言語モデルは 1 文ずつ学んでいるので、文の終わりより前は文脈にならない
+     * (文の終わりで終わっていれば文頭として扱う)。
+     */
+    private fun sentenceContext(text: String): String = text.substring(text.indexOfLast { it in SENTENCE_ENDS } + 1)
+
     private fun sequenceScorer(): SequenceScorer? = languageModel?.let { SequenceScorer(it) }
 
     /**
      * [reading] 全体を変換して文節に分ける。各文節の候補は先頭の 1 件だけを持つ。
-     * 候補一覧は [candidates] で別に求める。
+     * 候補一覧は [candidates] で別に求める。[leftContext] は確定済みの左の文で、言語モデルの文脈に使う。
      */
-    fun convert(reading: String, leftRid: Int = BOS_EOS): List<Segment> {
+    fun convert(reading: String, leftRid: Int = BOS_EOS, leftContext: String = ""): List<Segment> {
         if (reading.isEmpty()) return emptyList()
-        val path = bestPath(reading, 0, reading.length, leftRid, BOS_EOS)
+        val path = bestPath(reading, 0, reading.length, leftRid, BOS_EOS, sentenceContext(leftContext))
         return applyCollocations(reading, splitSegments(reading, path), leftRid).map(::preferKanjiNumber)
     }
 
@@ -134,7 +140,8 @@ class Converter(
 
     /**
      * 文節 [start]..[end] の候補を良い順に返す。[leftRid] は前の文節の右端品詞、
-     * [rightLid] は次の文節の左端品詞（末尾なら文末）。[leftSurface] は前の文節の表記で、言語モデルの文脈に使う。
+     * [rightLid] は次の文節の左端品詞（末尾なら文末）。[leftSurface] は左の確定済みの文や前の文節の表記で、言語モデルの文脈に使う
+     * ([convert] の leftContext と同じく、文の終わりより後だけを使う)。
      */
     fun candidates(
         reading: String,
@@ -189,7 +196,7 @@ class Converter(
                 cur = next[cur]
             }
             val cost = dictionary.connectionCost(leftRid, node.word.lid) + dictionary.prefixPenalty(node.word.lid) + c +
-                (scorer?.cost(null, node, leftSurface) ?: 0)
+                (scorer?.cost(null, node, sentenceContext(leftSurface)) ?: 0)
             scored.add(Candidate(surface.toString(), segmentReading, cost, node.word.lid, last.word.rid))
         }
         scored.sortBy { it.cost }
@@ -397,14 +404,23 @@ class Converter(
 
     private fun WordEntry.toCandidate() = Candidate(surface, reading, cost, lid, rid)
 
-    /** ビタビの途中の経路。[node] で終わり、[total] はそこまでのコスト。 */
-    private class PathEnd(val node: Node, val total: Int, val prev: PathEnd?) {
-        /** 次の語から見た直前の 2 文字のうち前のほう。語が 1 文字なら、その前の語から借りる。 */
+    /**
+     * ビタビの途中の経路。[node] で終わり、[total] はそこまでのコスト。
+     * [before] は先頭の語の前の文字 (左の文脈の最後の文字。無ければ文頭)。
+     */
+    private class PathEnd(val node: Node, val total: Int, val prev: PathEnd?, val before: Char? = null) {
+        /** 次の語から見た直前の 2 文字のうち前のほう。語が 1 文字なら、その前の語 (先頭なら左の文脈) から借りる。 */
         val beforeLast: Char?
-            get() = node.word.surface.let { if (it.length >= 2) it[it.length - 2] else prev?.node?.word?.surface?.lastOrNull() }
+            get() = node.word.surface.let {
+                when {
+                    it.length >= 2 -> it[it.length - 2]
+                    prev != null -> prev.node.word.surface.lastOrNull()
+                    else -> before
+                }
+            }
     }
 
-    private fun bestPath(reading: String, start: Int, end: Int, leftRid: Int, rightLid: Int): List<Node> {
+    private fun bestPath(reading: String, start: Int, end: Int, leftRid: Int, rightLid: Int, leftContext: String = ""): List<Node> {
         val nodesAt = buildLattice(reading, start, end)
         val scorer = sequenceScorer()
         val endingAt = Array(end - start + 1) { ArrayList<PathEnd>() }
@@ -414,8 +430,8 @@ class Converter(
                 if (pos == start) {
                     // mozc と同じく、変換する範囲の先頭と末尾の語には boundary.def のコストを足す
                     val total = dictionary.connectionCost(leftRid, node.word.lid) + node.word.cost +
-                        dictionary.prefixPenalty(node.word.lid) + (scorer?.cost(null, node) ?: 0)
-                    endingAt[node.end - start].add(PathEnd(node, total, null))
+                        dictionary.prefixPenalty(node.word.lid) + (scorer?.cost(null, node, leftContext) ?: 0)
+                    endingAt[node.end - start].add(PathEnd(node, total, null, leftContext.lastOrNull()))
                     continue
                 }
                 // 次の語の言語モデルのコストは、この語が 1 文字ならその前の文字にもよる (字を|書く と 地を|書く)。
@@ -568,6 +584,11 @@ class Converter(
 
         /** 最良の経路とのコストの差がこれ未満の経路だけを残す。品質回帰テストで 1000 では足りず、3000 では変わらなかった。 */
         private const val CONTEXT_MARGIN = 2000
+
+        /**
+         * 文の終わりの文字。左の文脈は、これより後だけを使う。「.」「．」は小数点にも使い、コーパスを文に分けるときも区切りにしていないので入れない。
+         */
+        private const val SENTENCE_ENDS = "。！？!?\n"
         private const val RUN_COST = 4000
         private const val PREDICT_SCAN = 3000
         private const val PREDICT_SCAN_SHORT = 800

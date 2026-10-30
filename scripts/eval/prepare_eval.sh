@@ -1,9 +1,10 @@
 #!/bin/bash
 # 変換精度の評価データ (手元だけで使う) を作る。使い方: prepare_eval.sh <作業ディレクトリ>
-# <作業ディレクトリ>/sets/ に chat.tsv と ajimee.tsv ができる。:engine:test に -Diroha.evalDir=<作業ディレクトリ>/sets を付けて測る。
+# <作業ディレクトリ>/sets/ に chat.tsv、ajimee.tsv、ajimee_context.tsv ができる。:engine:test に -Diroha.evalDir=<作業ディレクトリ>/sets を付けて測る。
 #
 #   chat.tsv   RealPersonaChat v1.0.0 (CC BY-SA 4.0) の雑談の発話から選んだ 3,000 文。読みは Sudachi で付ける
 #   ajimee.tsv AJIMEE-Bench (CC BY-SA 3.0、日本語 Wikipedia 入力誤りデータセット由来) の 200 件
+#   ajimee_context.tsv そのうち左の文脈の付いた 100 件を、文脈ごと (1 列目が文脈)
 #
 # どちらも言語モデルの学習にも重みの調整にも使っていない。評価データはリポジトリにも APK にも入れない。
 # 読み付けには sudachipy 0.7.0 と sudachidict_core 20261015 を使う (版が違うと読みが変わりうる)。例えば:
@@ -30,9 +31,11 @@ mkdir "$dir/sets.new"
 "$python" -I -W ignore "$here/eval_sets.py" chat \
     "$dir/real-persona-chat/real-persona-chat-1.0.0/real_persona_chat/dialogues" "$dir/sets.new/chat.tsv"
 "$python" -I "$here/eval_sets.py" ajimee "$dir/ajimee.json" "$dir/sets.new/ajimee.tsv"
+"$python" -I "$here/eval_sets.py" ajimee-context "$dir/ajimee.json" "$dir/sets.new/ajimee_context.tsv"
 sha256sum -c - <<EOF
 3f1ccaafb66948ca100f2148ae232ed856086be08f75666e297edd95d6b492dd  $dir/sets.new/chat.tsv
 1ec5c5d4cff4bbb64aa32ab1b47c5542f07e34696b7fef15f223b4620c102c51  $dir/sets.new/ajimee.tsv
+e19c2d3328fdefc36aa495d5ad3da9bc25b38c59aa8640da194050e1376d1d0c  $dir/sets.new/ajimee_context.tsv
 EOF
 rm -rf "$dir/sets"
 mv "$dir/sets.new" "$dir/sets"

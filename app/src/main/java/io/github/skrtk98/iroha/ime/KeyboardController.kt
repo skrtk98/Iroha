@@ -160,7 +160,9 @@ class KeyboardController(
             return
         }
         if (candidatesStart < 0 || newSelStart < candidatesStart || newSelEnd > candidatesEnd) {
+            // 打ち切った後の入力は別の位置になるので、直前に確定した語も次の変換の文脈にしない
             s.clear()
+            s.forgetContext()
             editor.finishComposing()
             render()
         }

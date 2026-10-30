@@ -3,13 +3,16 @@
 
   chat   RealPersonaChat の雑談の発話から文を選び、Sudachi で読みを付ける
   ajimee AJIMEE-Bench (日本語 Wikipedia 入力誤りデータセット由来) の読みと正解をそのまま並べる
+  ajimee-context AJIMEE-Bench のうち左の文脈 (context_text) の付いた件を、文脈ごと並べる
 
 出力は 1 行 1 件の TSV で、1 列目が読み (ひらがな)、2 列目以降が正解 (複数あればどれでも正解)。
+ajimee-context だけは、読みの前の 1 列目に左の文脈 (確定済みの文) を置く。出力のファイル名は _context.tsv で終える。
 Iroha の辞書とは別の解析器で読みを付けるのは、評価が Iroha の辞書の読み方に甘くならないようにするため。
 
 使い方:
   eval_sets.py chat <real_persona_chat/dialogues> <出力>
   eval_sets.py ajimee <evaluation_items.json> <出力>
+  eval_sets.py ajimee-context <evaluation_items.json> <出力>
 """
 import hashlib
 import json
@@ -90,6 +93,20 @@ def ajimee(items: Path, output: Path) -> None:
     write(output, rows)
 
 
+def ajimee_context(items: Path, output: Path) -> None:
+    with items.open(encoding="utf-8") as f:
+        data = json.load(f)
+    rows = [
+        [item["context_text"], hiragana(item["input"]), *dict.fromkeys(item["expected_output"])]
+        for item in data
+        if item.get("context_text")
+    ]
+    for row in rows:
+        if any("\t" in c or "\n" in c or not c for c in row):
+            sys.exit(f"bad item: {row}")
+    write(output, rows)
+
+
 def write(output: Path, rows: list[list[str]]) -> None:
     temp = output.with_name(output.name + ".tmp")
     with temp.open("w", encoding="utf-8") as f:
@@ -100,6 +117,7 @@ def write(output: Path, rows: list[list[str]]) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4 or sys.argv[1] not in ("chat", "ajimee"):
+    commands = {"chat": chat, "ajimee": ajimee, "ajimee-context": ajimee_context}
+    if len(sys.argv) != 4 or sys.argv[1] not in commands:
         sys.exit(__doc__)
-    {"chat": chat, "ajimee": ajimee}[sys.argv[1]](Path(sys.argv[2]), Path(sys.argv[3]))
+    commands[sys.argv[1]](Path(sys.argv[2]), Path(sys.argv[3]))

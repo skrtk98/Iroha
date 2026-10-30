@@ -11,6 +11,7 @@ import java.security.MessageDigest
  * 言語モデルの重みなどを決めるのに使っていない、くだけた雑談の文 (chat) と Wikipedia の文 (ajimee) で、
  * 品質回帰テストと MS IME に合わせすぎていないかを確かめる。
  * 各ファイルは 1 行 1 件の TSV で、1 列目が読み、2 列目以降が正解 (どれと一致しても正解)。
+ * 名前が _context.tsv で終わるファイルは、読みの前の 1 列目が左の文脈 (確定済みの文)。文脈ありと文脈なしの両方を測る。
  */
 class EvaluationSetTest {
     @Test
@@ -29,13 +30,23 @@ class EvaluationSetTest {
         for (file in files) {
             // どの版の評価データで測った数字かを結果に残す (prepare_eval.sh が確かめる SHA-256 と同じ)
             val sha = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
-            report("${file.nameWithoutExtension} (${sha.take(8)})", converter, items(file))
+            val name = file.nameWithoutExtension
+            val sha8 = sha.take(8)
+            val rows = items(file)
+            if (file.name.endsWith("_context.tsv")) {
+                check(rows.all { it.size >= 3 }) { "bad line in $file" }
+                report(name, sha8, converter, rows.map { it.drop(1) }, rows.map { it[0] })
+                report("${name}_nocontext", sha8, converter, rows.map { it.drop(1) }, rows.map { "" })
+            } else {
+                report(name, sha8, converter, rows, rows.map { "" })
+            }
         }
     }
 
-    private fun report(label: String, converter: Converter, items: List<List<String>>) {
-        val results = items.parallelStream().map { row ->
-            val output = converter.convert(row[0]).joinToString("") { it.candidates.first().surface }
+    private fun report(name: String, sha: String, converter: Converter, items: List<List<String>>, contexts: List<String>) {
+        val results = items.indices.toList().parallelStream().map { i ->
+            val row = items[i]
+            val output = converter.convert(row[0], leftContext = contexts[i]).joinToString("") { it.candidates.first().surface }
             // 正解が複数あるときは、正解の長さあたりの差がいちばん小さいものと比べる (AJIMEE-Bench の MinCER と同じ)。
             // 並びに左右されないよう、同じ値なら差の小さいもの、次に文字列の順で選ぶ
             val best = row.drop(1).map { it to editDistance(it, output) }
@@ -45,9 +56,9 @@ class EvaluationSetTest {
         val exact = results.count { it.third == 0 }
         val errors = results.sumOf { it.third }
         val chars = results.sumOf { it.first.length }
-        println("eval $label: exact $exact / ${results.size}, CER ${"%.2f".format(100.0 * errors / chars)}%")
+        println("eval $name ($sha): exact $exact / ${results.size}, CER ${"%.2f".format(100.0 * errors / chars)}%")
         if (System.getProperty("iroha.evalMisses") == "true") {
-            for ((reference, output, distance) in results) if (distance > 0) println("eval miss ${label.substringBefore(' ')}: $output (want $reference)")
+            for ((reference, output, distance) in results) if (distance > 0) println("eval miss $name: $output (want $reference)")
         }
     }
 
