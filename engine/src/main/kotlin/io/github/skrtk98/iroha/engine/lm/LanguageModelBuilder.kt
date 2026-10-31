@@ -107,6 +107,8 @@ class LanguageModelBuilder(
         data.writeInt(sortedTrigrams.size)
         data.writeInt(sortedLower.size)
         data.writeFloat(unknown.toFloat())
+        LanguageModel.bucketsOf(sortedTrigrams.size) { (sortedTrigrams[it] ushr 8).toInt() }.forEach(data::writeInt)
+        LanguageModel.bucketsOf(sortedLower.size) { (sortedLower[it] ushr 16).toInt() }.forEach(data::writeInt)
         sortedTrigrams.forEach { data.writeInt((it ushr 8).toInt()) }
         sortedTrigrams.forEach { data.writeByte(it.toInt()) }
         sortedLower.forEach { data.writeInt((it ushr 16).toInt()) }

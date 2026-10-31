@@ -1,7 +1,11 @@
 package io.github.skrtk98.iroha.engine.lm
 
+import io.github.skrtk98.iroha.engine.TestDictionary
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -12,6 +16,71 @@ class LanguageModelBuilderTest {
     private fun build(builder: LanguageModelBuilder, repeat: Int = 3, corpus: List<String> = sentences): LanguageModel {
         repeat(repeat) { corpus.forEach(builder::add) }
         return LanguageModel(ByteBuffer.wrap(ByteArrayOutputStream().also(builder::write).toByteArray()))
+    }
+
+    private fun bytes(builder: LanguageModelBuilder): ByteArray {
+        repeat(3) { sentences.forEach(builder::add) }
+        return ByteArrayOutputStream().also(builder::write).toByteArray()
+    }
+
+    @Test
+    fun writesIndexMatchingKeys() {
+        assertTrue(build(LanguageModelBuilder(minTrigramCount = 1)).indexMatchesKeys())
+    }
+
+    @Test
+    fun shippedModelIndexMatchesKeys() {
+        // 出荷するモデルの索引は、旧形式のファイルに後から足したもの。鍵と食い違うと、引けるはずの並びが引けなくなる
+        val model = TestDictionary.languageModel
+        assumeTrue(model != null)
+        assertTrue(model!!.indexMatchesKeys())
+    }
+
+    @Test
+    fun rejectsIndexOutsideTable() {
+        val data = bytes(LanguageModelBuilder(minTrigramCount = 1))
+        val trigrams = ByteBuffer.wrap(data).getInt(8)
+        // 3-gram の索引の 2 番目を表の外に向ける。最後は件数なので、どこかで減ることになる
+        ByteBuffer.wrap(data).putInt(LanguageModel.HEADER_SIZE + 4, trigrams + 1)
+        assertThrows(IllegalArgumentException::class.java) { LanguageModel(ByteBuffer.wrap(data)) }
+    }
+
+    @Test
+    fun rejectsCountsBeyondFile() {
+        // 件数 × 表の幅が Int であふれる大きさでも、ファイルに収まらないとして拒む。索引は範囲の検証を通る形にする
+        for (field in listOf(8, 12)) {
+            val data = bytes(LanguageModelBuilder(minTrigramCount = 1))
+            val buffer = ByteBuffer.wrap(data)
+            val huge = 1 shl 29
+            buffer.putInt(field, huge)
+            val index = LanguageModel.HEADER_SIZE + if (field == 8) 0 else LanguageModel.INDEX_SIZE
+            buffer.putInt(index + LanguageModel.INDEX_SIZE - 4, huge)
+            assertThrows(IllegalArgumentException::class.java) { LanguageModel(ByteBuffer.wrap(data)) }
+        }
+    }
+
+    @Test
+    fun indexCheckNoticesUnsortedKeys() {
+        // 同じ上位 16 ビットの 2 つの鍵を入れ替えると索引は変わらないが、二分探索で引けなくなる。
+        // そうした鍵の組ができるよう、3-gram が数千種類になるコーパスで作る
+        val builder = LanguageModelBuilder(minTrigramCount = 1)
+        ('ぁ'..'ゖ').forEach { a -> builder.add("$a" + ('ァ'..'ヶ').joinToString("")) }
+        val data = ByteArrayOutputStream().also(builder::write).toByteArray()
+        val buffer = ByteBuffer.wrap(data)
+        val count = buffer.getInt(8)
+        val keys = LanguageModel.HEADER_SIZE + LanguageModel.INDEX_SIZE * 2
+        val i = (1 until count).first { buffer.getInt(keys + (it - 1) * 4) ushr 16 == buffer.getInt(keys + it * 4) ushr 16 }
+        val a = buffer.getInt(keys + (i - 1) * 4)
+        buffer.putInt(keys + (i - 1) * 4, buffer.getInt(keys + i * 4))
+        buffer.putInt(keys + i * 4, a)
+        assertFalse(LanguageModel(ByteBuffer.wrap(data)).indexMatchesKeys())
+    }
+
+    @Test
+    fun rejectsOldFormat() {
+        val data = bytes(LanguageModelBuilder(minTrigramCount = 1))
+        ByteBuffer.wrap(data).putInt(4, 1)
+        assertThrows(IllegalArgumentException::class.java) { LanguageModel(ByteBuffer.wrap(data)) }
     }
 
     @Test
