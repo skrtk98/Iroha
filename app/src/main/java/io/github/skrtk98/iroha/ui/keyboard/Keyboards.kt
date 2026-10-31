@@ -35,19 +35,19 @@ fun SpaceKey(kind: SpaceKind, onAction: (KeyAction) -> Unit, modifier: Modifier 
     val onClick = { onAction(KeyAction.Space) }
     when (kind) {
         SpaceKind.Space -> IconKey(R.drawable.ic_space_bar, "空白", onClick, modifier, KeyStyle.Secondary)
-        SpaceKind.Convert -> TextKey("変換", onClick, modifier, KeyStyle.Secondary, 15.sp)
-        SpaceKind.NextCandidate -> TextKey("次候補", onClick, modifier, KeyStyle.Secondary, 15.sp)
+        SpaceKind.Convert -> IconKey(R.drawable.ic_translate, "変換", onClick, modifier, KeyStyle.Secondary)
+        SpaceKind.NextCandidate -> IconKey(R.drawable.ic_arrow_forward, "次候補", onClick, modifier, KeyStyle.Secondary)
     }
 }
 
 /**
- * 確定・改行キー。入力欄の求める動作は記号で示し、入力中の確定だけは対応する記号が無いので文字にする。
+ * 確定・改行キー。入力欄の求める動作を記号で示す。入力中は確定の記号にする。
  */
 @Composable
 fun EnterKey(kind: EnterKind, composing: Boolean, onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
     val onClick = { onAction(KeyAction.Enter) }
     if (composing) {
-        TextKey("確定", onClick, modifier, KeyStyle.Accent, 15.sp)
+        IconKey(R.drawable.ic_check_circle, "確定", onClick, modifier, KeyStyle.Accent)
         return
     }
     val (icon, description) = when (kind) {
