@@ -21,6 +21,10 @@ object InputFields {
     fun startsInAlphabet(inputType: Int): Boolean =
         isPassword(inputType) || isText(inputType) && variationOf(inputType) in EMAIL_VARIATIONS
 
+    /** Enter で改行の文字を入れる、複数行の欄。 */
+    fun entersNewlineAsText(inputType: Int): Boolean =
+        isText(inputType) && inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+
     private fun isText(inputType: Int) = inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT
 
     private fun variationOf(inputType: Int) = inputType and InputType.TYPE_MASK_VARIATION

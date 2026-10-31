@@ -9,6 +9,7 @@ import java.nio.ByteBuffer
  *
  * 形式 ([LanguageModelBuilder] が書く。数値はビッグエンディアン):
  * - ヘッダー: MAGIC, VERSION, 3-gram の数, 1・2-gram の数, 未知の文字の -ln 確率 (float)
+ * - 索引: 3-gram 表と 1・2-gram 表それぞれの、指紋の上位 16 ビットごとの開始位置 (u32 を [BUCKETS] + 1 個ずつ)
  * - 3-gram 表: 指紋 (u32) の昇順の配列と、同じ順の -ln 確率 (u8) の配列
  * - 1・2-gram 表: 指紋の昇順の配列と、-ln 確率 (u8, [NONE] は確率なし) と、文脈としての -ln バックオフ (u8) の配列
  *
@@ -25,7 +26,10 @@ class LanguageModel(private val buf: ByteBuffer) {
     private val lowerProbs: Int
     private val lowerBackoffs: Int
 
-    /** 指紋の上位 16 ビットごとの、表の中の開始位置。二分探索の範囲を数件に絞る。 */
+    /**
+     * 指紋の上位 16 ビットごとの、表の中の開始位置。二分探索の範囲を数件に絞る。
+     * 読み込みのたびに全キーを走査して作ると、0.3.0 のモデルで 180ms ほどかかるので、ファイルに持たせている。
+     */
     private val trigramBuckets: IntArray
     private val lowerBuckets: IntArray
 
@@ -37,25 +41,46 @@ class LanguageModel(private val buf: ByteBuffer) {
         unknownCost = buf.getFloat(16)
         // 変換はコストが 0 以上であることを前提に、負けの決まった経路を打ち切る
         require(unknownCost >= 0f && unknownCost.isFinite()) { "invalid unknown cost $unknownCost" }
-        trigramKeys = HEADER_SIZE
+        // 索引は範囲しか確かめないので、表がファイルに収まることを先に確かめる。件数が大きいと Int では桁があふれる
+        require(trigramCount >= 0 && lowerCount >= 0) { "invalid language model counts" }
+        val size = HEADER_SIZE + INDEX_SIZE * 2L + trigramCount * 5L + lowerCount * 6L
+        require(size <= buf.limit()) { "truncated language model" }
+        trigramBuckets = buckets(HEADER_SIZE, trigramCount)
+        lowerBuckets = buckets(HEADER_SIZE + INDEX_SIZE, lowerCount)
+        trigramKeys = HEADER_SIZE + INDEX_SIZE * 2
         trigramProbs = trigramKeys + trigramCount * 4
         lowerKeys = trigramProbs + trigramCount
         lowerProbs = lowerKeys + lowerCount * 4
         lowerBackoffs = lowerProbs + lowerCount
-        require(lowerBackoffs + lowerCount <= buf.limit()) { "truncated language model" }
-        trigramBuckets = buckets(trigramKeys, trigramCount)
-        lowerBuckets = buckets(lowerKeys, lowerCount)
     }
 
+    /**
+     * ファイルの索引を読む。中身が鍵と合っているかまでは見ない (見ると全キーの走査になる) が、
+     * 範囲だけは確かめて、壊れたファイルでも表の外を読まないようにする (表がファイルに収まることは呼ぶ前に確かめる)。
+     */
     private fun buckets(offset: Int, count: Int): IntArray {
         val starts = IntArray(BUCKETS + 1)
-        var bucket = 0
-        for (i in 0 until count) {
-            val high = buf.getInt(offset + i * 4) ushr 16
-            while (bucket <= high) starts[bucket++] = i
-        }
-        while (bucket <= BUCKETS) starts[bucket++] = count
+        // Android の古い版では position() が Buffer を返すので、つなげて呼ばない
+        val view = buf.duplicate()
+        view.position(offset)
+        view.asIntBuffer().get(starts)
+        require(starts[0] == 0 && starts[BUCKETS] == count) { "invalid language model index" }
+        for (i in 0 until BUCKETS) require(starts[i] <= starts[i + 1]) { "invalid language model index" }
         return starts
+    }
+
+    /**
+     * 鍵が指紋の昇順に並び、索引がその並びと合っているか。全キーを走査するので、テストだけで使う。
+     * [bucketsOf] は昇順を前提にするので、並びも確かめないと、順の乱れた表を合っていると見てしまう。
+     */
+    internal fun indexMatchesKeys(): Boolean =
+        indexMatches(trigramKeys, trigramCount, trigramBuckets) && indexMatches(lowerKeys, lowerCount, lowerBuckets)
+
+    private fun indexMatches(offset: Int, count: Int, buckets: IntArray): Boolean {
+        for (i in 1 until count) {
+            if (Integer.compareUnsigned(buf.getInt(offset + (i - 1) * 4), buf.getInt(offset + i * 4)) >= 0) return false
+        }
+        return buckets.contentEquals(bucketsOf(count) { buf.getInt(offset + it * 4) })
     }
 
     /** [previous] の後に [text] が続くことの -ln 確率。[previous] が空なら文頭から始める。 */
@@ -121,9 +146,22 @@ class LanguageModel(private val buf: ByteBuffer) {
 
     companion object {
         const val MAGIC = 0x49524C4D // "IRLM"
-        const val VERSION = 1
+        const val VERSION = 2
         const val HEADER_SIZE = 20
         private const val BUCKETS = 1 shl 16
+        internal const val INDEX_SIZE = (BUCKETS + 1) * 4
+
+        /** 指紋の昇順に並んだ [count] 個の鍵 ([key] で i 番目を引く) から、上位 16 ビットごとの開始位置を作る。 */
+        internal inline fun bucketsOf(count: Int, key: (Int) -> Int): IntArray {
+            val starts = IntArray(BUCKETS + 1)
+            var bucket = 0
+            for (i in 0 until count) {
+                val high = key(i) ushr 16
+                while (bucket <= high) starts[bucket++] = i
+            }
+            while (bucket <= BUCKETS) starts[bucket++] = count
+            return starts
+        }
 
         /** 文頭を表す文字。コーパスにも候補にも現れない。 */
         const val BOS = '\u0002'

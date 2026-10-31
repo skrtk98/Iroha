@@ -9,6 +9,14 @@ class InputFieldsTest {
     private val text = InputType.TYPE_CLASS_TEXT
 
     @Test
+    fun onlyMultiLineTextFieldsEnterNewlineAsText() {
+        assertTrue(InputFields.entersNewlineAsText(text or InputType.TYPE_TEXT_FLAG_MULTI_LINE))
+        assertFalse(InputFields.entersNewlineAsText(text))
+        // 文字の欄でなければ、同じビットが立っていても改行の文字は入れない
+        assertFalse(InputFields.entersNewlineAsText(InputType.TYPE_CLASS_NUMBER or InputType.TYPE_TEXT_FLAG_MULTI_LINE))
+    }
+
+    @Test
     fun uriFieldsStartInJapanese() {
         // Chrome のアドレスバー（URI・候補なし）
         val omnibox = text or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
