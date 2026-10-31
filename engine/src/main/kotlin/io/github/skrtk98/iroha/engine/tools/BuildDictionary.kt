@@ -50,7 +50,7 @@ fun main(args: Array<String>) {
     }
 
     val importer = MozcImporter(cacheDir)
-    val entries = importer.readEntries(maxCost) + importer.readExtras()
+    val entries = (importer.readEntries(maxCost) + importer.readExtras()).filterNot { hasHentaigana(it.surface) }
     val (matrix, dim) = importer.readMatrix()
     output.parentFile?.mkdirs()
     output.outputStream().use { out ->
@@ -65,6 +65,9 @@ fun main(args: Array<String>) {
     }
     println("wrote ${output.length()} bytes, ${entries.size} entries")
 }
+
+/** 変体仮名などの文字 (Kana Supplement と Kana Extended-A) を含むか。普段の入力で使わず、表示できない端末もあるので候補に出さない。 */
+internal fun hasHentaigana(text: String): Boolean = text.codePoints().anyMatch { it in 0x1B000..0x1B12F }
 
 private fun sha256(file: File): String {
     val digest = MessageDigest.getInstance("SHA-256")
