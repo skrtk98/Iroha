@@ -45,6 +45,12 @@ class ComposingSession(
     /** 直前に確定した文節の表記。次の変換で、最初の文節の前の文脈として使う。 */
     private var previousSurface: String? = null
 
+    /**
+     * 言語モデルの文脈にする、直前に確定した文字列の末尾。[previousSurface] は文節ごとの学習のために最後の文節だけを持つが、
+     * こちらは予測候補を 1 語ずつ確定したときなども続けてつなぐ。
+     */
+    private var languageContext = ""
+
     val isComposing: Boolean get() = buffer.isNotEmpty()
     val isConverting: Boolean get() = segments != null
 
@@ -147,7 +153,7 @@ class ComposingSession(
         if (newLength == segs[focus].reading.length) return true
         val leftRid = segs.getOrNull(focus - 1)?.current?.rid ?: Converter.BOS_EOS
         val end = start + newLength
-        val leftSurface = segs.getOrNull(focus - 1)?.current?.surface ?: previousSurface.orEmpty()
+        val leftSurface = leftText(segs, focus)
         val resizedReading = reading.substring(start, end)
         val resized = ConvSegment(
             resizedReading,
@@ -159,7 +165,14 @@ class ComposingSession(
         )
         resized.expanded = true
         val rest = if (end < reading.length) {
-            toConvSegments(converter.convert(reading.substring(end), resized.current.rid), resized.current.surface)
+            toConvSegments(
+                converter.convert(
+                    reading.substring(end),
+                    resized.current.rid,
+                    leftContext = leftText(segs, focus) + resized.current.surface,
+                ),
+                resized.current.surface,
+            )
         } else {
             emptyList()
         }
@@ -186,6 +199,7 @@ class ComposingSession(
         if (index > 0) learning?.learn(candidate.reading, candidate.surface, candidate.lid, candidate.rid, previousSurface)
         clear()
         previousSurface = candidate.surface
+        remember(candidate.surface)
         return candidate.surface
     }
 
@@ -205,6 +219,7 @@ class ComposingSession(
         }
         clear()
         previousSurface = segs?.last()?.current?.surface
+        remember(text)
         return text
     }
 
@@ -225,12 +240,22 @@ class ComposingSession(
     /** カーソルが動いたときなど、直前の文脈が当てにならなくなったときに呼ぶ。 */
     fun forgetContext() {
         previousSurface = null
+        languageContext = ""
     }
 
     /** 変換せずに続けて入れた [text] を、次の変換の文脈にする。 */
     fun continueContext(text: String) {
         previousSurface = text
+        remember(text)
     }
+
+    private fun remember(text: String) {
+        languageContext = (languageContext + text).takeLast(LANGUAGE_CONTEXT)
+    }
+
+    /** [index] 番目の文節から見た左の文 (確定済みの文と、その前の文節)。言語モデルの文脈に使う。 */
+    private fun leftText(segs: List<ConvSegment>, index: Int): String =
+        languageContext + segs.take(index).joinToString("") { it.current.surface }
 
     fun clear() {
         buffer = StringBuilder()
@@ -243,7 +268,8 @@ class ComposingSession(
         val reading = RomajiConverter.finish(buffer)
         buffer = StringBuilder(reading)
         caret = reading.length
-        val converted = converter.convert(reading)
+        // 直前に確定した文を言語モデルの文脈にする (カーソルを動かしたなどで当てにならなければ forgetContext で消えている)
+        val converted = converter.convert(reading, leftContext = languageContext)
         if (converted.isEmpty()) return
         segments = toConvSegments(converted, previousSurface)
         focus = 0
@@ -292,10 +318,15 @@ class ComposingSession(
         val leftRid = segs.getOrNull(index - 1)?.current?.rid ?: Converter.BOS_EOS
         val rightLid = segs.getOrNull(index + 1)?.current?.lid ?: Converter.BOS_EOS
         val current = seg.current
-        val leftSurface = segs.getOrNull(index - 1)?.current?.surface ?: previousSurface.orEmpty()
+        val leftSurface = leftText(segs, index)
         val list = converter.candidates(reading, start, start + seg.reading.length, leftRid, rightLid, leftSurface = leftSurface)
         seg.candidates = listOf(current) + list.filter { it.surface != current.surface }
         seg.selected = 0
         seg.expanded = true
+    }
+
+    private companion object {
+        /** 言語モデルの文脈として覚える文字数。3-gram には 2 文字で足りるが、文の終わりを見分けられるよう少し多く持つ。 */
+        const val LANGUAGE_CONTEXT = 16
     }
 }

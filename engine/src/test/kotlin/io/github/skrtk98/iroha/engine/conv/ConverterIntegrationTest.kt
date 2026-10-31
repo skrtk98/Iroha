@@ -43,6 +43,41 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun usesLeftContext() {
+        // 「かがおおい」だけでは「蚊」か「課」か決まらないが、確定済みの左の文で選べる言語モデル
+        val builder = LanguageModelBuilder(minTrigramCount = 1)
+        repeat(100) { builder.add("夏は蚊が多い") }
+        repeat(100) { builder.add("会社の課が多い") }
+        val model = LanguageModel(ByteBuffer.wrap(ByteArrayOutputStream().also(builder::write).toByteArray()))
+        val withModel = Converter(dictionary, languageModel = model, languageModelWeight = 350f)
+        fun convert(left: String) = withModel.convert("かがおおい", leftContext = left).joinToString("") { it.candidates.first().surface }
+        assertTrue(convert("夏は").startsWith("蚊"))
+        assertTrue(convert("会社の").startsWith("課"))
+        // 文の終わりより前は文脈にしない
+        assertEquals(convert(""), convert("会社の。"))
+        assertEquals(convert("夏は"), convert("会社の。夏は"))
+        // 文節の候補も同じ規則で文脈を使う
+        fun top(left: String) = withModel.candidates("か", 0, 1, leftSurface = left).first().surface
+        assertEquals("蚊", top("夏は"))
+        assertEquals("課", top("会社の"))
+        assertEquals(top(""), top("会社の。"))
+    }
+
+    @Test
+    fun decimalPointIsNotSentenceEnd() {
+        // 「.5」の後なら課、文頭の「5」の後なら蚊になる言語モデル。小数点を文の終わりとみなすと、全角の「３．５」が「5」だけになる
+        val builder = LanguageModelBuilder(minTrigramCount = 1)
+        repeat(100) { builder.add("1.5課が多い") }
+        repeat(100) { builder.add("5蚊が多い") }
+        val model = LanguageModel(ByteBuffer.wrap(ByteArrayOutputStream().also(builder::write).toByteArray()))
+        val withModel = Converter(dictionary, languageModel = model, languageModelWeight = 350f)
+        fun convert(left: String) = withModel.convert("かがおおい", leftContext = left).joinToString("") { it.candidates.first().surface }
+        assertTrue(convert("3.5").startsWith("課"))
+        assertTrue(convert("３．５").startsWith("課"))
+        assertTrue(convert("5").startsWith("蚊"))
+    }
+
+    @Test
     fun keepsContextWithShippedModel() {
         assumeTrue(TestDictionary.languageModel != null)
         // 「に」の前が「蚊」か「家」かで「噛まれる」の自然さが変わる
