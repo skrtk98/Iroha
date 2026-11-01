@@ -47,6 +47,16 @@ class ComposingSessionTest {
     }
 
     @Test
+    fun selectingPartOfTheReadingKeepsLaterUnfinishedRomaji() {
+        "kakan".forEach { session.insert(it.toString(), romaji = true) }
+        session.moveCursor(-2)
+        session.insert("n", romaji = true)
+        session.selectSuggestion(suggestion("かん"), 1)
+        session.insert("a", romaji = true)
+        assertEquals("かな", session.preedit.text)
+    }
+
+    @Test
     fun selectingTheWholeReadingEndsComposing() {
         "kan".forEach { session.insert(it.toString(), romaji = true) }
         session.selectSuggestion(suggestion("かん"), 1)

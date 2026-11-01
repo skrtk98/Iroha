@@ -253,8 +253,10 @@ class Converter(
     /**
      * [reading] 全体の変換を良い順に最大 [limit] 件返す。後ろから解いた最小コストを見積もりにして前から探す (A*)。
      * 最良とのコストの差が [PATH_MARGIN] 以上の経路は出さない。探す経路の数は [PATH_SEARCH_LIMIT] までに抑える。
+     * 読みが [PATH_READING_LIMIT] より長ければ探さない。
      */
     private fun wholeAlternatives(reading: String, limit: Int): List<Candidate> {
+        if (reading.length > PATH_READING_LIMIT) return emptyList()
         val costs = remainingCosts(reading, 0, reading.length, BOS_EOS)
         val queue = PriorityQueue<PartialPath>(compareBy { it.total })
         for (node in costs.nodesAt[0]) {
@@ -265,14 +267,17 @@ class Converter(
         }
         val result = LinkedHashMap<String, Candidate>()
         val bestTotal = queue.peek()?.total ?: return emptyList()
+        // 学習した語は辞書の語と同じ表記の別のノードになる。同じ表記の経路を数えると、探す枠を使い切ってしまう
+        val seen = HashSet<String>()
         var searched = 0
-        while (result.size < limit && searched++ < PATH_SEARCH_LIMIT) {
+        while (result.size < limit && searched < PATH_SEARCH_LIMIT) {
             val path = queue.poll() ?: break
             if (path.total - bestTotal >= PATH_MARGIN) break
+            val surface = pathSurface(path)
+            if (!seen.add("${path.node.end}/${path.node.word.rid}/$surface")) continue
+            searched++
             if (path.node.end == reading.length) {
-                result.getOrPut(pathSurface(path)) {
-                    Candidate(pathSurface(path), reading, path.total, firstNode(path).word.lid, path.node.word.rid)
-                }
+                result.getOrPut(surface) { Candidate(surface, reading, path.total, firstNode(path).word.lid, path.node.word.rid) }
                 continue
             }
             for (next in costs.nodesAt[path.node.end]) {
@@ -417,7 +422,7 @@ class Converter(
         val segments = convert(reading)
         val prefixes = prefixCandidates(reading, segments).distinctBy { it.surface }.take(PREFIX_SLOTS)
         // 予測が多くても、ひらがな・カタカナと読みの一部の候補を残せるよう、その分の枠を空けておく
-        var room = limit - KANA_SLOTS - prefixes.size
+        var room = (limit - KANA_SLOTS - prefixes.size).coerceAtLeast(1)
         fun add(c: Candidate) {
             if (result.size >= room || c.surface in result) return
             if (dictionary.extras(ExtraKind.SuggestionFilter, c.surface).isNotEmpty()) return
@@ -705,6 +710,9 @@ class Converter(
 
         /** 全文の変換の案を探すときに調べる経路の数の上限。読みが長くても打鍵ごとの時間を抑える。 */
         private const val PATH_SEARCH_LIMIT = 300
+
+        /** 全文の変換の案を探す読みの長さの上限。文全体は 1 案あれば足り、打鍵ごとの時間を増やさない。 */
+        private const val PATH_READING_LIMIT = 40
 
         /** 予測候補のうち、ひらがな・カタカナのために空けておく数。 */
         private const val KANA_SLOTS = 2

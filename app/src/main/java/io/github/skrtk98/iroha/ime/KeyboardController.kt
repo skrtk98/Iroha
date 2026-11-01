@@ -66,6 +66,7 @@ class KeyboardController(
 
     /** 確定の後に出している続きの候補。 */
     private var followUps: List<Candidate> = emptyList()
+    private var suggestionsReading: String? = null
     private var followUpJob: Job? = null
 
     /** 続きの候補を引くための、直前に確定した文字列。続きの候補を選ぶとつなげていく。 */
@@ -80,6 +81,9 @@ class KeyboardController(
 
     /** 読みの一部を確定し、残りの読みが入力欄で未確定に戻るのを待っている。 */
     private var awaitingRestOfReading = false
+
+    /** 読みの一部として確定した文字列。読みを打ち終えたときの続きの候補に使う。 */
+    private var partialCommitted = ""
 
     init {
         scope.launch { collectSuggestions() }
@@ -151,6 +155,8 @@ class KeyboardController(
         textSelected = newSelStart != newSelEnd
         val s = session ?: return
         if (!s.isComposing) {
+            awaitingRestOfReading = false
+            partialCommitted = ""
             if (awaitingCommitCursor && !textSelected) {
                 commitCursor = newSelStart
                 awaitingCommitCursor = false
@@ -177,7 +183,6 @@ class KeyboardController(
     }
 
     fun onAction(action: KeyAction) {
-        awaitingRestOfReading = false
         // 続きの候補は次の操作までのもの。選んだときだけ、その続きをまた出す
         if (action !is KeyAction.SelectFollowUp) clearFollowUps()
         when (action) {
@@ -308,6 +313,8 @@ class KeyboardController(
         val committed = if (s.isConverting) {
             s.selectCandidate(index)
         } else {
+            // 表示中の候補が今の読みのものでなければ選ばせない (読みの一部を確定した直後の二度押しなど)
+            if (suggestionsReading != s.suggestionReading) return
             val candidate = suggestions.getOrNull(index) ?: return
             s.selectSuggestion(candidate, index)
         }
@@ -315,7 +322,11 @@ class KeyboardController(
             if (s.isComposing) {
                 // 読みの一部を確定した。続きの候補は読みを打ち終えてから出す
                 awaitingRestOfReading = true
-                editor.commitText(committed)
+                partialCommitted += committed
+                editor.batchEdit {
+                    editor.commitText(committed)
+                    render()
+                }
             } else {
                 commitConverted(committed)
             }
@@ -415,7 +426,8 @@ class KeyboardController(
     private fun commitConverted(text: String) {
         awaitCommitCursor()
         editor.commitText(text)
-        committedTail = text
+        committedTail = (partialCommitted + text).takeLast(FOLLOW_UP_TAIL)
+        partialCommitted = ""
         showFollowUps()
     }
 
@@ -463,6 +475,7 @@ class KeyboardController(
 
     private fun resetComposition() {
         awaitingRestOfReading = false
+        partialCommitted = ""
         clearFollowUps()
         session?.clear()
         session?.forgetContext()
@@ -526,6 +539,7 @@ class KeyboardController(
             // 計算中に入力が進んでいれば捨てる
             if (suggestionRequests.value != reading) return@collectLatest
             suggestions = result
+            suggestionsReading = reading
             _state.update { it.copy(candidates = result.map(Candidate::surface)) }
         }
     }

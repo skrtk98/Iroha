@@ -209,13 +209,10 @@ class ComposingSession(
     /** [reading] の候補を確定した後に残る読み。書きかけのローマ字 (かn の n) は、続きを打てるようそのまま残す。 */
     private fun remainingReading(reading: String): String {
         if (reading.isEmpty()) return ""
-        val finished = RomajiConverter.finish(buffer)
-        return when {
-            finished == reading -> ""
-            buffer.startsWith(reading) -> buffer.substring(reading.length)
-            finished.startsWith(reading) -> finished.substring(reading.length)
-            else -> ""
+        for (end in 1..buffer.length) {
+            if (RomajiConverter.finish(buffer.substring(0, end)) == reading) return buffer.substring(end)
         }
+        return ""
     }
 
     /** 現在の内容を確定して返す。 */
