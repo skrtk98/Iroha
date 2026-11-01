@@ -1,6 +1,7 @@
 package io.github.skrtk98.iroha.engine.dict
 
 import io.github.skrtk98.iroha.engine.TestDictionary
+import io.github.skrtk98.iroha.engine.tools.hasHentaigana
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -19,6 +20,25 @@ class MozcDataTest {
     }
 
     private fun surfaces(reading: String) = dictionary.exactSearch(reading).map { it.surface }
+
+    @Test
+    fun dropsHentaigana() {
+        // 記号の表の読み。変体仮名はこの読みで引けたので、残っていればここに出る
+        assertTrue(surfaces(ExtraKind.Symbol.key("へんたいがな")).isEmpty())
+        // 読みが「に」の記号にも残らない
+        assertFalse(surfaces(ExtraKind.Symbol.key("に")).any { it.codePointAt(0) in 0x1B000..0x1B12F })
+    }
+
+    @Test
+    fun detectsHentaiganaAnywhereInSurface() {
+        val first = String(Character.toChars(0x1B000))
+        val last = String(Character.toChars(0x1B12F))
+        assertTrue(hasHentaigana(first + "あ"))
+        assertTrue(hasHentaigana("あ" + last + "あ"))
+        assertFalse(hasHentaigana(String(Character.toChars(0x1AFFF))))
+        assertFalse(hasHentaigana(String(Character.toChars(0x1B130))))
+        assertFalse(hasHentaigana("にゝ二\uD83D\uDE00"))
+    }
 
     @Test
     fun addsAuxDictionaryWords() {
