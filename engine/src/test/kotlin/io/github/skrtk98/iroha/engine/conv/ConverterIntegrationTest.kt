@@ -4,6 +4,8 @@ import io.github.skrtk98.iroha.engine.TestDictionary
 import io.github.skrtk98.iroha.engine.dict.SystemDictionary
 import io.github.skrtk98.iroha.engine.lm.LanguageModel
 import io.github.skrtk98.iroha.engine.lm.LanguageModelBuilder
+import io.github.skrtk98.iroha.engine.dict.WordEntry
+import io.github.skrtk98.iroha.engine.text.Kana
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -112,6 +114,54 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun suggestsWordsForTheStartOfTheReading() {
+        val reading = "こうべつせきぶん"
+        val suggestions = converter.suggest(reading)
+        assertTrue(suggestions.toString(), suggestions.any { it.surface == "高" && it.reading == "こう" })
+        assertEquals(suggestions.toString(), reading, suggestions.first().reading)
+    }
+
+    @Test
+    fun suggestsSeveralWholeConversions() {
+        val reading = "しゅようこう"
+        val suggestions = converter.suggest(reading)
+        assertTrue(suggestions.toString(), suggestions.any { it.surface == "主要港" })
+        assertTrue(suggestions.toString(), wholeConversions(suggestions, reading) >= 2)
+    }
+
+    /** 全文の候補のうち、ひらがな・カタカナを除いた数。 */
+    private fun wholeConversions(suggestions: List<Candidate>, reading: String) =
+        suggestions.count { it.reading == reading && it.surface != reading && it.surface != Kana.toKatakana(reading) }
+
+    @Test
+    fun duplicateWordsDoNotCrowdOutWholeConversions() {
+        // 学習した語のように、辞書と同じ語を別に持つ語の集まり。同じ表記の経路が読みの長さに応じて倍々に増える
+        val duplicates = object : WordSource {
+            override val maxReadingLength = 4
+            override fun exact(reading: String) = dictionary.exactSearch(reading)
+            override fun predict(prefix: String, limit: Int) = emptyList<WordEntry>()
+        }
+        val reading = "はし".repeat(12)
+        fun whole(c: Converter) = c.suggest(reading).filter { it.reading == reading }.map { it.surface }
+        assertEquals(whole(Converter(dictionary)), whole(Converter(dictionary, listOf(duplicates))))
+    }
+
+    @Test
+    fun smallLimitKeepsTheBestConversion() {
+        assertEquals(listOf("日本"), converter.suggest("にほん", limit = 1).map { it.surface })
+    }
+
+    @Test
+    fun keepsKanaAndPartsOfTheReadingWhenPredictionsAreMany() {
+        val reading = "ありがとう"
+        val suggestions = converter.suggest(reading)
+        assertTrue(suggestions.size <= 30)
+        assertTrue(suggestions.toString(), suggestions.any { it.surface == reading })
+        assertTrue(suggestions.toString(), suggestions.any { it.surface == "アリガトウ" })
+        assertTrue(suggestions.toString(), suggestions.any { it.reading.length < reading.length })
+    }
+
+    @Test
     fun isFastEnough() {
         val text = "きょうはとうきょうでかいぎがあるのでおくれないようにいえをでます"
         repeat(5) { converter.convert(text) }
@@ -122,6 +172,11 @@ class ConverterIntegrationTest {
         val s2 = System.nanoTime()
         repeat(20) { converter.suggest("か") }
         println("suggest(1 char): ${(System.nanoTime() - s2) / 1_000_000 / 20}ms")
+        val s3 = System.nanoTime()
+        repeat(20) { converter.suggest(text) }
+        val suggestMs = (System.nanoTime() - s3) / 1_000_000 / 20
+        println("suggest(long): ${suggestMs}ms")
+        assertTrue(suggestMs < 100)
         assertTrue(ms < 100)
     }
 

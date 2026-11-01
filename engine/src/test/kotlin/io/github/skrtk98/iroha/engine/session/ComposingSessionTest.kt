@@ -1,6 +1,7 @@
 package io.github.skrtk98.iroha.engine.session
 
 import io.github.skrtk98.iroha.engine.TestDictionary
+import io.github.skrtk98.iroha.engine.conv.Candidate
 import io.github.skrtk98.iroha.engine.conv.Converter
 import io.github.skrtk98.iroha.engine.lm.LanguageModel
 import io.github.skrtk98.iroha.engine.lm.LanguageModelBuilder
@@ -24,6 +25,49 @@ class ComposingSessionTest {
         assumeTrue(dict != null)
         learning = LearningStore()
         session = ComposingSession(Converter(dict!!, listOf(learning)), learning)
+    }
+
+    private fun suggestion(reading: String) = Candidate("字", reading, 0, 0, 0)
+
+    @Test
+    fun selectingPartOfTheReadingKeepsTheRest() {
+        session.insert("こうべつ", romaji = false)
+        assertEquals("字", session.selectSuggestion(suggestion("こう"), 1))
+        assertTrue(session.isComposing)
+        assertEquals(Preedit("べつ", 2), session.preedit)
+        assertEquals("べつ", session.suggestionReading)
+    }
+
+    @Test
+    fun selectingPartOfTheReadingKeepsUnfinishedRomaji() {
+        "kan".forEach { session.insert(it.toString(), romaji = true) }
+        session.selectSuggestion(suggestion("か"), 1)
+        session.insert("a", romaji = true)
+        assertEquals("な", session.preedit.text)
+    }
+
+    @Test
+    fun selectingPartOfTheReadingKeepsLaterUnfinishedRomaji() {
+        "kakan".forEach { session.insert(it.toString(), romaji = true) }
+        session.moveCursor(-2)
+        session.insert("n", romaji = true)
+        session.selectSuggestion(suggestion("かん"), 1)
+        session.insert("a", romaji = true)
+        assertEquals("かな", session.preedit.text)
+    }
+
+    @Test
+    fun selectingTheWholeReadingEndsComposing() {
+        "kan".forEach { session.insert(it.toString(), romaji = true) }
+        session.selectSuggestion(suggestion("かん"), 1)
+        assertFalse(session.isComposing)
+    }
+
+    @Test
+    fun selectingALongerPredictionEndsComposing() {
+        session.insert("こう", romaji = false)
+        session.selectSuggestion(suggestion("こうべつ"), 1)
+        assertFalse(session.isComposing)
     }
 
     @Test

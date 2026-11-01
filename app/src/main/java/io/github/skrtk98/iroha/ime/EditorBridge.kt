@@ -18,6 +18,9 @@ import io.github.skrtk98.iroha.engine.session.Preedit
 interface EditorBridge {
     fun commitText(text: String)
     fun setPreedit(preedit: Preedit)
+
+    /** [block] の編集をまとめて行う。途中の状態が入力欄から通知されにくくなる。 */
+    fun batchEdit(block: () -> Unit)
     fun finishComposing()
     fun deleteBackward()
     fun sendEnter()
@@ -41,6 +44,16 @@ class InputConnectionBridge(
 
     override fun commitText(text: String) {
         connection()?.commitText(text, 1)
+    }
+
+    override fun batchEdit(block: () -> Unit) {
+        val ic = connection()
+        ic?.beginBatchEdit()
+        try {
+            block()
+        } finally {
+            ic?.endBatchEdit()
+        }
     }
 
     override fun setPreedit(preedit: Preedit) {
