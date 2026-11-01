@@ -414,8 +414,12 @@ class Converter(
     fun suggest(reading: String, limit: Int = 30): List<Candidate> {
         if (reading.isEmpty()) return emptyList()
         val result = LinkedHashMap<String, Candidate>()
+        val segments = convert(reading)
+        val prefixes = prefixCandidates(reading, segments).distinctBy { it.surface }.take(PREFIX_SLOTS)
+        // 予測が多くても、ひらがな・カタカナと読みの一部の候補を残せるよう、その分の枠を空けておく
+        var room = limit - KANA_SLOTS - prefixes.size
         fun add(c: Candidate) {
-            if (result.size >= limit || c.surface in result) return
+            if (result.size >= room || c.surface in result) return
             if (dictionary.extras(ExtraKind.SuggestionFilter, c.surface).isNotEmpty()) return
             result[c.surface] = c
         }
@@ -424,7 +428,6 @@ class Converter(
         for (source in sources) {
             for (w in source.exact(reading)) add(w.toCandidate())
         }
-        val segments = convert(reading)
         if (segments.isNotEmpty()) {
             val first = segments.first().candidates.first()
             val last = segments.last().candidates.first()
@@ -457,7 +460,6 @@ class Converter(
         systemPredicted.sortBy { it.cost }
         predicted += systemPredicted.take(limit)
         predicted.forEach { add(it.toCandidate()) }
-        prefixCandidates(reading, segments).forEach(::add)
         // 語に続く言い回し (しなきゃいけない など)
         val suffixes = ArrayList<WordEntry>()
         dictionary.predictExtras(ExtraKind.Suffix, reading, PREDICT_SCAN_SHORT) { suffixes.add(it) }
@@ -465,6 +467,7 @@ class Converter(
         extraCandidates(ExtraKind.Symbol, reading).forEach(::add)
         extraCandidates(ExtraKind.Emoji, reading).forEach(::add)
 
+        room = limit
         add(Candidate(reading, reading, UNKNOWN_COST, dictionary.unknownNounId, dictionary.unknownNounId))
         add(
             Candidate(
@@ -472,6 +475,7 @@ class Converter(
                 dictionary.unknownNounId, dictionary.unknownNounId,
             ),
         )
+        prefixes.forEach(::add)
         return result.values.toList()
     }
 
@@ -701,6 +705,12 @@ class Converter(
 
         /** 全文の変換の案を探すときに調べる経路の数の上限。読みが長くても打鍵ごとの時間を抑える。 */
         private const val PATH_SEARCH_LIMIT = 300
+
+        /** 予測候補のうち、ひらがな・カタカナのために空けておく数。 */
+        private const val KANA_SLOTS = 2
+
+        /** 予測候補のうち、読みの一部の候補に使える数。 */
+        private const val PREFIX_SLOTS = 12
 
         /** 読みの一部の候補で、読みの長さごとに出す語の数。 */
         private const val PREFIX_WORDS_PER_LENGTH = 5
