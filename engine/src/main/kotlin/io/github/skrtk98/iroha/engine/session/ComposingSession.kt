@@ -194,13 +194,28 @@ class ComposingSession(
         return commit()
     }
 
-    /** 入力中に予測候補を選んで確定する。 */
+    /** 入力中に予測候補を選んで確定する。読みの先頭の一部の候補なら、残りの読みは未確定のまま残る。 */
     fun selectSuggestion(candidate: Candidate, index: Int): String {
         if (index > 0) learning?.learn(candidate.reading, candidate.surface, candidate.lid, candidate.rid, previousSurface)
+        val rest = remainingReading(candidate.reading)
         clear()
+        buffer.append(rest)
+        caret = rest.length
         previousSurface = candidate.surface
         remember(candidate.surface)
         return candidate.surface
+    }
+
+    /** [reading] の候補を確定した後に残る読み。書きかけのローマ字 (かn の n) は、続きを打てるようそのまま残す。 */
+    private fun remainingReading(reading: String): String {
+        if (reading.isEmpty()) return ""
+        val finished = RomajiConverter.finish(buffer)
+        return when {
+            finished == reading -> ""
+            buffer.startsWith(reading) -> buffer.substring(reading.length)
+            finished.startsWith(reading) -> finished.substring(reading.length)
+            else -> ""
+        }
     }
 
     /** 現在の内容を確定して返す。 */

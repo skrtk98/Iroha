@@ -78,6 +78,9 @@ class KeyboardController(
     private var commitCursor: Int? = null
     private var awaitingCommitCursor = false
 
+    /** 読みの一部を確定し、残りの読みが入力欄で未確定に戻るのを待っている。 */
+    private var awaitingRestOfReading = false
+
     init {
         scope.launch { collectSuggestions() }
         scope.launch { clipboard.entries.collect { clips -> _state.update { it.copy(clips = clips) } } }
@@ -159,6 +162,11 @@ class KeyboardController(
             }
             return
         }
+        // 読みの一部を確定した直後は、残りの読みを未確定に戻す前の位置が届くことがある
+        if (awaitingRestOfReading) {
+            if (candidatesStart < 0) return
+            awaitingRestOfReading = false
+        }
         if (candidatesStart < 0 || newSelStart < candidatesStart || newSelEnd > candidatesEnd) {
             // 打ち切った後の入力は別の位置になるので、直前に確定した語も次の変換の文脈にしない
             s.clear()
@@ -169,6 +177,7 @@ class KeyboardController(
     }
 
     fun onAction(action: KeyAction) {
+        awaitingRestOfReading = false
         // 続きの候補は次の操作までのもの。選んだときだけ、その続きをまた出す
         if (action !is KeyAction.SelectFollowUp) clearFollowUps()
         when (action) {
@@ -302,7 +311,15 @@ class KeyboardController(
             val candidate = suggestions.getOrNull(index) ?: return
             s.selectSuggestion(candidate, index)
         }
-        if (committed.isNotEmpty()) commitConverted(committed)
+        if (committed.isNotEmpty()) {
+            if (s.isComposing) {
+                // 読みの一部を確定した。続きの候補は読みを打ち終えてから出す
+                awaitingRestOfReading = true
+                editor.commitText(committed)
+            } else {
+                commitConverted(committed)
+            }
+        }
         _state.update { it.copy(candidateListExpanded = false) }
         render()
     }
@@ -445,6 +462,7 @@ class KeyboardController(
     }
 
     private fun resetComposition() {
+        awaitingRestOfReading = false
         clearFollowUps()
         session?.clear()
         session?.forgetContext()

@@ -112,6 +112,14 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun suggestsWordsForTheStartOfTheReading() {
+        val reading = "こうべつせきぶん"
+        val suggestions = converter.suggest(reading)
+        assertTrue(suggestions.toString(), suggestions.any { it.surface == "高" && it.reading == "こう" })
+        assertEquals(suggestions.toString(), reading, suggestions.first().reading)
+    }
+
+    @Test
     fun isFastEnough() {
         val text = "きょうはとうきょうでかいぎがあるのでおくれないようにいえをでます"
         repeat(5) { converter.convert(text) }

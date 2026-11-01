@@ -339,6 +339,7 @@ class Converter(
 
     /**
      * 入力中の読みに対する予測候補。先頭は全体の変換結果。
+     * 読みの先頭の一部だけの候補も含む。その候補の reading は [reading] より短く、選ぶと残りの読みが未確定のまま残る。
      */
     fun suggest(reading: String, limit: Int = 30): List<Candidate> {
         if (reading.isEmpty()) return emptyList()
@@ -385,6 +386,7 @@ class Converter(
         systemPredicted.sortBy { it.cost }
         predicted += systemPredicted.take(limit)
         predicted.forEach { add(it.toCandidate()) }
+        prefixCandidates(reading, segments).forEach(::add)
         // 語に続く言い回し (しなきゃいけない など)
         val suffixes = ArrayList<WordEntry>()
         dictionary.predictExtras(ExtraKind.Suffix, reading, PREDICT_SCAN_SHORT) { suffixes.add(it) }
@@ -400,6 +402,25 @@ class Converter(
             ),
         )
         return result.values.toList()
+    }
+
+    /** 読みの先頭の一部を変換した候補。最初の文節を先に置き、続けて読みの長い語から順に置く。 */
+    private fun prefixCandidates(reading: String, segments: List<Segment>): List<Candidate> = buildList {
+        if (segments.size > 1) add(segments.first().candidates.first())
+        val words = HashMap<Int, ArrayList<WordEntry>>()
+        for (word in dictionary.commonPrefixSearch(reading, 0)) {
+            if (word.reading.length < reading.length && dictionary.posClass(word.lid) != PosClass.Functional) {
+                words.getOrPut(word.reading.length) { ArrayList() }.add(word)
+            }
+        }
+        for (source in sources) {
+            for (length in 1..minOf(source.maxReadingLength, reading.length - 1)) {
+                source.exact(reading.substring(0, length)).forEach { add(it.toCandidate()) }
+            }
+        }
+        for (length in words.keys.sortedDescending()) {
+            words.getValue(length).sortedBy { it.cost }.take(PREFIX_WORDS_PER_LENGTH).forEach { add(it.toCandidate()) }
+        }
     }
 
     private fun WordEntry.toCandidate() = Candidate(surface, reading, cost, lid, rid)
@@ -600,6 +621,9 @@ class Converter(
         /** 文節の候補で、記号・絵文字より前に置く辞書の候補の数。 */
         private const val CANDIDATES_BEFORE_SYMBOLS = 3
         private const val SUFFIX_LIMIT = 5
+
+        /** 読みの一部の候補で、読みの長さごとに出す語の数。 */
+        private const val PREFIX_WORDS_PER_LENGTH = 5
         private const val ZERO_QUERY_DEFAULT = "default"
     }
 }
