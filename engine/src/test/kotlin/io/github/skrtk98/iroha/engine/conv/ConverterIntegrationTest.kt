@@ -120,6 +120,22 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun suggestsSeveralWholeConversions() {
+        val suggestions = converter.suggest("しゅようこう").map { it.surface }
+        assertTrue(suggestions.toString(), "主要港" in suggestions)
+    }
+
+    @Test
+    fun keepsKanaAndPartsOfTheReadingWhenPredictionsAreMany() {
+        val reading = "ありがとう"
+        val suggestions = converter.suggest(reading)
+        assertTrue(suggestions.size <= 30)
+        assertTrue(suggestions.toString(), suggestions.any { it.surface == reading })
+        assertTrue(suggestions.toString(), suggestions.any { it.surface == "アリガトウ" })
+        assertTrue(suggestions.toString(), suggestions.any { it.reading.length < reading.length })
+    }
+
+    @Test
     fun isFastEnough() {
         val text = "きょうはとうきょうでかいぎがあるのでおくれないようにいえをでます"
         repeat(5) { converter.convert(text) }
@@ -130,6 +146,9 @@ class ConverterIntegrationTest {
         val s2 = System.nanoTime()
         repeat(20) { converter.suggest("か") }
         println("suggest(1 char): ${(System.nanoTime() - s2) / 1_000_000 / 20}ms")
+        val s3 = System.nanoTime()
+        repeat(20) { converter.suggest(text) }
+        println("suggest(long): ${(System.nanoTime() - s3) / 1_000_000 / 20}ms")
         assertTrue(ms < 100)
     }
 
