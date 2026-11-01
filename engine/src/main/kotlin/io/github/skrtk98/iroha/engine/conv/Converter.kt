@@ -6,6 +6,7 @@ import io.github.skrtk98.iroha.engine.dict.SystemDictionary
 import io.github.skrtk98.iroha.engine.dict.WordEntry
 import io.github.skrtk98.iroha.engine.lm.LanguageModel
 import io.github.skrtk98.iroha.engine.text.Kana
+import java.util.PriorityQueue
 
 /**
  * mozc と同じくラティスを作り、単語コストと連接コストの和が最小の経路をビタビで求める。
@@ -152,37 +153,11 @@ class Converter(
         limit: Int = 200,
         leftSurface: String = "",
     ): List<Candidate> {
-        val nodesAt = buildLattice(reading, start, end)
-        // 後ろから求めるので、1 文字の語の前の語は分からない。その分の文脈は文頭として近似する
-        val scorer = sequenceScorer()
-        // best[node] = node から区間末尾までの最小コスト（node 自身を含む）
-        val best = HashMap<Node, Int>()
-        val next = HashMap<Node, Node?>()
-        for (pos in end - 1 downTo start) {
-            for (node in nodesAt[pos - start]) {
-                var bestCost: Int
-                var bestNext: Node? = null
-                if (node.end == end) {
-                    bestCost = dictionary.connectionCost(node.word.rid, rightLid) + dictionary.suffixPenalty(node.word.rid)
-                } else {
-                    bestCost = Int.MAX_VALUE
-                    for (m in nodesAt[node.end - start]) {
-                        val c = best[m] ?: continue
-                        val base = dictionary.connectionCost(node.word.rid, m.word.lid) + c
-                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
-                        if (base >= bestCost) continue
-                        val total = base + (scorer?.cost(node, m) ?: 0)
-                        if (total < bestCost) {
-                            bestCost = total
-                            bestNext = m
-                        }
-                    }
-                    if (bestCost == Int.MAX_VALUE) continue
-                }
-                best[node] = bestCost + node.word.cost
-                next[node] = bestNext
-            }
-        }
+        val costs = remainingCosts(reading, start, end, rightLid)
+        val nodesAt = costs.nodesAt
+        val scorer = costs.scorer
+        val best = costs.best
+        val next = costs.next
         val segmentReading = reading.substring(start, end)
         val scored = ArrayList<Candidate>()
         for (node in nodesAt[0]) {
@@ -228,6 +203,106 @@ class Converter(
             result.putIfAbsent(fallback.surface, fallback)
         }
         return result.values.toList()
+    }
+
+    /** ラティスと、各ノードから区間の末尾までの最小コスト。[best] はノード自身のコストを含む。 */
+    private class RemainingCosts(
+        val nodesAt: Array<ArrayList<Node>>,
+        val scorer: SequenceScorer?,
+        val best: HashMap<Node, Int>,
+        val next: HashMap<Node, Node?>,
+    )
+
+    /** 区間 [start]..[end] を後ろから解く。後ろから求めるので、1 文字の語の前の語は分からない。その分の文脈は文頭として近似する。 */
+    private fun remainingCosts(reading: String, start: Int, end: Int, rightLid: Int): RemainingCosts {
+        val nodesAt = buildLattice(reading, start, end)
+        val scorer = sequenceScorer()
+        val best = HashMap<Node, Int>()
+        val next = HashMap<Node, Node?>()
+        for (pos in end - 1 downTo start) {
+            for (node in nodesAt[pos - start]) {
+                var bestCost: Int
+                var bestNext: Node? = null
+                if (node.end == end) {
+                    bestCost = dictionary.connectionCost(node.word.rid, rightLid) + dictionary.suffixPenalty(node.word.rid)
+                } else {
+                    bestCost = Int.MAX_VALUE
+                    for (m in nodesAt[node.end - start]) {
+                        val c = best[m] ?: continue
+                        val base = dictionary.connectionCost(node.word.rid, m.word.lid) + c
+                        // 言語モデルのコストは 0 以上なので、足す前に負けていれば引かずに済む
+                        if (base >= bestCost) continue
+                        val total = base + (scorer?.cost(node, m) ?: 0)
+                        if (total < bestCost) {
+                            bestCost = total
+                            bestNext = m
+                        }
+                    }
+                    if (bestCost == Int.MAX_VALUE) continue
+                }
+                best[node] = bestCost + node.word.cost
+                next[node] = bestNext
+            }
+        }
+        return RemainingCosts(nodesAt, scorer, best, next)
+    }
+
+    /** 全文の変換の途中までの経路。[cost] はここまで (語 [node] を含む)、[total] は末尾までの見積もりを足した値。 */
+    private class PartialPath(val node: Node, val prev: PartialPath?, val cost: Int, val total: Int)
+
+    /**
+     * [reading] 全体の変換を良い順に最大 [limit] 件返す。後ろから解いた最小コストを見積もりにして前から探す (A*)。
+     * 最良とのコストの差が [PATH_MARGIN] 以上の経路は出さない。探す経路の数は [PATH_SEARCH_LIMIT] までに抑える。
+     * 読みが [PATH_READING_LIMIT] より長ければ探さない。
+     */
+    private fun wholeAlternatives(reading: String, limit: Int): List<Candidate> {
+        if (reading.length > PATH_READING_LIMIT) return emptyList()
+        val costs = remainingCosts(reading, 0, reading.length, BOS_EOS)
+        val queue = PriorityQueue<PartialPath>(compareBy { it.total })
+        for (node in costs.nodesAt[0]) {
+            val remaining = costs.best[node] ?: continue
+            val cost = dictionary.connectionCost(BOS_EOS, node.word.lid) + dictionary.prefixPenalty(node.word.lid) +
+                node.word.cost + (costs.scorer?.cost(null, node) ?: 0)
+            queue.add(PartialPath(node, null, cost, cost + remaining - node.word.cost))
+        }
+        val result = LinkedHashMap<String, Candidate>()
+        val bestTotal = queue.peek()?.total ?: return emptyList()
+        // 学習した語は辞書の語と同じ表記の別のノードになる。同じ表記の経路を数えると、探す枠を使い切ってしまう
+        val seen = HashSet<String>()
+        var searched = 0
+        while (result.size < limit && searched < PATH_SEARCH_LIMIT) {
+            val path = queue.poll() ?: break
+            if (path.total - bestTotal >= PATH_MARGIN) break
+            val surface = pathSurface(path)
+            if (!seen.add("${path.node.end}/${path.node.word.rid}/$surface")) continue
+            searched++
+            if (path.node.end == reading.length) {
+                result.getOrPut(surface) { Candidate(surface, reading, path.total, firstNode(path).word.lid, path.node.word.rid) }
+                continue
+            }
+            for (next in costs.nodesAt[path.node.end]) {
+                val remaining = costs.best[next] ?: continue
+                val cost = path.cost + dictionary.connectionCost(path.node.word.rid, next.word.lid) +
+                    (costs.scorer?.cost(path.node, next) ?: 0) + next.word.cost
+                queue.add(PartialPath(next, path, cost, cost + remaining - next.word.cost))
+            }
+        }
+        return result.values.toList()
+    }
+
+    private fun firstNode(path: PartialPath): Node {
+        var cur = path
+        while (true) cur = cur.prev ?: return cur.node
+    }
+
+    private fun pathSurface(path: PartialPath): String {
+        val words = ArrayList<String>()
+        var cur: PartialPath? = path
+        while (cur != null) {
+            words.add(cur.node.word.surface)
+            cur = cur.prev
+        }
+        return words.asReversed().joinToString("")
     }
 
     /**
@@ -339,12 +414,17 @@ class Converter(
 
     /**
      * 入力中の読みに対する予測候補。先頭は全体の変換結果。
+     * 読みの先頭の一部だけの候補も含む。その候補の reading は [reading] より短く、選ぶと残りの読みが未確定のまま残る。
      */
     fun suggest(reading: String, limit: Int = 30): List<Candidate> {
         if (reading.isEmpty()) return emptyList()
         val result = LinkedHashMap<String, Candidate>()
+        val segments = convert(reading)
+        val prefixes = prefixCandidates(reading, segments).distinctBy { it.surface }.take(PREFIX_SLOTS)
+        // 予測が多くても、ひらがな・カタカナと読みの一部の候補を残せるよう、その分の枠を空けておく
+        var room = (limit - KANA_SLOTS - prefixes.size).coerceAtLeast(1)
         fun add(c: Candidate) {
-            if (result.size >= limit || c.surface in result) return
+            if (result.size >= room || c.surface in result) return
             if (dictionary.extras(ExtraKind.SuggestionFilter, c.surface).isNotEmpty()) return
             result[c.surface] = c
         }
@@ -353,7 +433,6 @@ class Converter(
         for (source in sources) {
             for (w in source.exact(reading)) add(w.toCandidate())
         }
-        val segments = convert(reading)
         if (segments.isNotEmpty()) {
             val first = segments.first().candidates.first()
             val last = segments.last().candidates.first()
@@ -367,6 +446,7 @@ class Converter(
                 ),
             )
         }
+        wholeAlternatives(reading, WHOLE_ALTERNATIVES).forEach(::add)
         dictionary.exactSearch(reading)
             .filter { dictionary.posClass(it.lid) != PosClass.Functional }
             .forEach { add(it.toCandidate()) }
@@ -392,6 +472,7 @@ class Converter(
         extraCandidates(ExtraKind.Symbol, reading).forEach(::add)
         extraCandidates(ExtraKind.Emoji, reading).forEach(::add)
 
+        room = limit
         add(Candidate(reading, reading, UNKNOWN_COST, dictionary.unknownNounId, dictionary.unknownNounId))
         add(
             Candidate(
@@ -399,7 +480,27 @@ class Converter(
                 dictionary.unknownNounId, dictionary.unknownNounId,
             ),
         )
+        prefixes.forEach(::add)
         return result.values.toList()
+    }
+
+    /** 読みの先頭の一部を変換した候補。最初の文節を先に置き、続けて読みの長い語から順に置く。 */
+    private fun prefixCandidates(reading: String, segments: List<Segment>): List<Candidate> = buildList {
+        if (segments.size > 1) add(segments.first().candidates.first())
+        val words = HashMap<Int, ArrayList<WordEntry>>()
+        for (word in dictionary.commonPrefixSearch(reading, 0)) {
+            if (word.reading.length < reading.length && dictionary.posClass(word.lid) != PosClass.Functional) {
+                words.getOrPut(word.reading.length) { ArrayList() }.add(word)
+            }
+        }
+        for (source in sources) {
+            for (length in 1..minOf(source.maxReadingLength, reading.length - 1)) {
+                source.exact(reading.substring(0, length)).forEach { add(it.toCandidate()) }
+            }
+        }
+        for (length in words.keys.sortedDescending()) {
+            words.getValue(length).sortedBy { it.cost }.take(PREFIX_WORDS_PER_LENGTH).forEach { add(it.toCandidate()) }
+        }
     }
 
     private fun WordEntry.toCandidate() = Candidate(surface, reading, cost, lid, rid)
@@ -600,6 +701,27 @@ class Converter(
         /** 文節の候補で、記号・絵文字より前に置く辞書の候補の数。 */
         private const val CANDIDATES_BEFORE_SYMBOLS = 3
         private const val SUFFIX_LIMIT = 5
+
+        /** 予測候補に出す、全文の変換の案の数。 */
+        private const val WHOLE_ALTERNATIVES = 4
+
+        /** 全文の変換の案として出す、最良の経路とのコストの差の上限。 */
+        private const val PATH_MARGIN = 3000
+
+        /** 全文の変換の案を探すときに調べる経路の数の上限。読みが長くても打鍵ごとの時間を抑える。 */
+        private const val PATH_SEARCH_LIMIT = 300
+
+        /** 全文の変換の案を探す読みの長さの上限。文全体は 1 案あれば足り、打鍵ごとの時間を増やさない。 */
+        private const val PATH_READING_LIMIT = 40
+
+        /** 予測候補のうち、ひらがな・カタカナのために空けておく数。 */
+        private const val KANA_SLOTS = 2
+
+        /** 予測候補のうち、読みの一部の候補に使える数。 */
+        private const val PREFIX_SLOTS = 12
+
+        /** 読みの一部の候補で、読みの長さごとに出す語の数。 */
+        private const val PREFIX_WORDS_PER_LENGTH = 5
         private const val ZERO_QUERY_DEFAULT = "default"
     }
 }
