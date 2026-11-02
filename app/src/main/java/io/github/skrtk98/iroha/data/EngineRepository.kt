@@ -10,11 +10,6 @@ import io.github.skrtk98.iroha.engine.user.LearningStore
 import io.github.skrtk98.iroha.engine.user.UserDictionary
 import io.github.skrtk98.iroha.engine.user.UserDictionaryTsv
 import io.github.skrtk98.iroha.engine.user.UserWord
-import java.io.File
-import java.io.FileInputStream
-import java.nio.channels.FileChannel
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -25,6 +20,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileInputStream
+import java.nio.channels.FileChannel
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** 読み込み済みの変換エンジン一式。 */
 class Engine(
