@@ -416,7 +416,7 @@ class Converter(
      * 入力中の読みに対する予測候補。先頭は全体の変換結果。
      * 読みの先頭の一部だけの候補も含む。その候補の reading は [reading] より短く、選ぶと残りの読みが未確定のまま残る。
      */
-    fun suggest(reading: String, limit: Int = 30): List<Candidate> {
+    fun suggest(reading: String, limit: Int = SUGGESTION_LIMIT): List<Candidate> {
         if (reading.isEmpty()) return emptyList()
         val result = LinkedHashMap<String, Candidate>()
         val segments = convert(reading)
@@ -489,7 +489,7 @@ class Converter(
         if (segments.size > 1) add(segments.first().candidates.first())
         val words = HashMap<Int, ArrayList<WordEntry>>()
         for (word in dictionary.commonPrefixSearch(reading, 0)) {
-            if (word.reading.length < reading.length && dictionary.posClass(word.lid) != PosClass.Functional) {
+            if (word.reading.length < reading.length && !dictionary.posClass(word.lid).attachesToPrevious) {
                 words.getOrPut(word.reading.length) { ArrayList() }.add(word)
             }
         }
@@ -538,7 +538,7 @@ class Converter(
                 // 次の語の言語モデルのコストは、この語が 1 文字ならその前の文字にもよる (字を|書く と 地を|書く)。
                 // 1 文字の助詞などでは、前の文字の違う経路を CONTEXT_PATHS 本まで残す。全ての 1 文字の語に広げると遅すぎる。
                 val limit = if (scorer != null && node.word.surface.length == 1 &&
-                    dictionary.posClass(node.word.lid) == PosClass.Functional
+                    dictionary.posClass(node.word.lid).attachesToPrevious
                 ) {
                     CONTEXT_PATHS
                 } else {
@@ -713,6 +713,9 @@ class Converter(
 
         /** 全文の変換の案を探す読みの長さの上限。文全体は 1 案あれば足り、打鍵ごとの時間を増やさない。 */
         private const val PATH_READING_LIMIT = 40
+
+        /** 予測候補の数の上限。読み全体の語が多い読み (こう、かん) でも、よく使う語が切れないようにする。 */
+        private const val SUGGESTION_LIMIT = 50
 
         /** 予測候補のうち、ひらがな・カタカナのために空けておく数。 */
         private const val KANA_SLOTS = 2

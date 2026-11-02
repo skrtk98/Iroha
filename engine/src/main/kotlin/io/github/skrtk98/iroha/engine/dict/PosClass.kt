@@ -5,7 +5,7 @@ enum class PosClass {
     /** 文節の先頭になれる自立語。 */
     Content,
 
-    /** 前の語に付属する語（助詞・助動詞・接尾辞・非自立語）。 */
+    /** 前の語に付属する語（助詞・助動詞）。 */
     Functional,
 
     /** 後ろの語に付く接頭辞。 */
@@ -16,7 +16,13 @@ enum class PosClass {
 
     /** 数 (名詞,数)。自立語と同じく扱い、候補には別の書き方 (3 と 三 など) を足す。 */
     Number,
+
+    /** 前の語に付く語のうち、単独の候補にもなる語（接尾辞・非自立語。項、港、紙など）。 */
+    Suffix,
     ;
+
+    /** 前の語に付属する語か。 */
+    val attachesToPrevious: Boolean get() = this == Functional || this == Suffix
 
     companion object {
         /** mozc の id.def の品詞名から分類する。 */
@@ -26,7 +32,7 @@ enum class PosClass {
             val minor = fields.getOrElse(1) { "" }
             return when {
                 major == "助詞" || major == "助動詞" -> Functional
-                minor == "接尾" || minor == "非自立" -> Functional
+                minor == "接尾" || minor == "非自立" -> Suffix
                 major == "接頭詞" -> Prefix
                 major == "記号" -> Symbol
                 major == "名詞" && minor == "数" -> Number
