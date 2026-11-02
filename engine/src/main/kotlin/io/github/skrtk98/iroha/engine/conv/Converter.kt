@@ -447,24 +447,20 @@ class Converter(
             )
         }
         wholeAlternatives(reading, WHOLE_ALTERNATIVES).forEach(::add)
-        dictionary.exactSearch(reading)
-            .filter { dictionary.posClass(it.lid) != PosClass.Functional }
-            .forEach { add(it.toCandidate()) }
+        // 読み全体の語が多い読み (こう、かん) でも、長い語の予測が出るように枠を残す
+        val allRoom = room
+        room = (allRoom - PREDICTION_SLOTS).coerceAtLeast(1)
+        val exactWords = dictionary.exactSearch(reading).filter { dictionary.posClass(it.lid) != PosClass.Functional }
+        exactWords.forEach { add(it.toCandidate()) }
         // よくある読み間違いには正しい表記を出す (おどさん → お土産)
         dictionary.extras(ExtraKind.ReadingCorrection, reading).forEach { add(it.toCandidate()) }
 
         val predicted = ArrayList<WordEntry>()
         for (source in sources) predicted += source.predict(reading, PREDICT_SOURCE_LIMIT)
-        val maxReadings = if (reading.length <= 1) PREDICT_SCAN_SHORT else PREDICT_SCAN
-        val systemPredicted = ArrayList<WordEntry>()
-        dictionary.predictiveSearch(reading, maxReadings) { w ->
-            if (w.reading.length > reading.length && dictionary.posClass(w.lid).let { it == PosClass.Content || it == PosClass.Number }) {
-                systemPredicted.add(w)
-            }
-        }
-        systemPredicted.sortBy { it.cost }
-        predicted += systemPredicted.take(limit)
+        predicted += systemPredictions(reading).take(limit)
+        room = allRoom
         predicted.forEach { add(it.toCandidate()) }
+        exactWords.forEach { add(it.toCandidate()) }
         // 語に続く言い回し (しなきゃいけない など)
         val suffixes = ArrayList<WordEntry>()
         dictionary.predictExtras(ExtraKind.Suffix, reading, PREDICT_SCAN_SHORT) { suffixes.add(it) }
@@ -482,6 +478,25 @@ class Converter(
         )
         prefixes.forEach(::add)
         return result.values.toList()
+    }
+
+    /** 読みが [reading] で始まる語のコスト順。読みの数が多い接頭辞は、辞書に用意した上位の語を使う。 */
+    private fun systemPredictions(reading: String): List<WordEntry> {
+        val prepared = dictionary.extras(ExtraKind.Prediction, reading)
+        if (prepared.isNotEmpty()) {
+            return prepared.map {
+                val tab = it.surface.indexOf('\t')
+                it.copy(reading = it.surface.substring(0, tab), surface = it.surface.substring(tab + 1))
+            }
+        }
+        val words = ArrayList<WordEntry>()
+        dictionary.predictiveSearch(reading, PREDICT_SCAN) { w ->
+            if (w.reading.length > reading.length && dictionary.posClass(w.lid).let { it == PosClass.Content || it == PosClass.Number }) {
+                words.add(w)
+            }
+        }
+        words.sortBy { it.cost }
+        return words
     }
 
     /** 読みの先頭の一部を変換した候補。最初の文節を先に置き、続けて読みの長い語から順に置く。 */
@@ -716,6 +731,9 @@ class Converter(
 
         /** 予測候補の数の上限。読み全体の語が多い読み (こう、かん) でも、よく使う語が切れないようにする。 */
         private const val SUGGESTION_LIMIT = 50
+
+        /** 読み全体の語が多いときに、長い語の予測のために残す数。 */
+        private const val PREDICTION_SLOTS = 12
 
         /** 予測候補のうち、ひらがな・カタカナのために空けておく数。 */
         private const val KANA_SLOTS = 2

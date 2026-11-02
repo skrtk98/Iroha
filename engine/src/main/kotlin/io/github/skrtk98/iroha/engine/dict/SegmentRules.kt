@@ -42,7 +42,7 @@ class SegmentRules(
                 val left = kinds[index / kinds.size]
                 when (kinds[index % kinds.size]) {
                     PosClass.Functional, PosClass.Suffix -> left == PosClass.Symbol
-                    PosClass.Content, PosClass.Prefix, PosClass.Number -> left != PosClass.Prefix
+                    PosClass.Content, PosClass.Inflected, PosClass.Prefix, PosClass.Number -> left != PosClass.Prefix
                     PosClass.Symbol -> true
                 }
             }
