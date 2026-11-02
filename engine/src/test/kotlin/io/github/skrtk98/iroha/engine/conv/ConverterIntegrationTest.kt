@@ -125,6 +125,21 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun predictsLongerWordsForShortReadings() {
+        // 「か」で始まる読みは数万あり、読みの順に途中まで調べるだけでは「かん」の語に偏っていた
+        val words = converter.suggest("か").filter { it.reading.length > 1 }
+        assertTrue(words.toString(), words.any { !it.reading.startsWith("かん") })
+        // 読み全体の語が多くても、長い語の枠を残す
+        assertTrue(converter.suggest("こう").toString(), converter.suggest("こう").any { it.reading.length > 2 })
+    }
+
+    @Test
+    fun doesNotPredictInflectedForms() {
+        val surfaces = listOf("に", "は", "にん", "はん").flatMap { r -> converter.suggest(r).map { it.surface } }
+        for (word in listOf("任ぜ", "反し", "任ず", "早っ")) assertTrue(surfaces.toString(), word !in surfaces)
+    }
+
+    @Test
     fun suggestsWordsForTheStartOfTheReading() {
         val reading = "こうべつせきぶん"
         val suggestions = converter.suggest(reading)
