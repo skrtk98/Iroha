@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -436,13 +437,15 @@ private fun CandidateGrid(
     onAction: (KeyAction) -> Unit,
     modifier: Modifier,
 ) {
-    // バーに全体が見えている候補は繰り返さない。開いている間はバーのスクロールで変わらないよう、開いた時点の値を使う
+    // バーに全体が見えている候補は繰り返さない。バーのレイアウトに追従するので、スクロールや候補の更新でも候補が隠れたままにならない
     val tolerance = with(LocalDensity.current) { (CANDIDATE_PADDING + CANDIDATE_MARGIN).roundToPx() }
-    val inBar = remember(state.candidates) {
-        val info = barState.layoutInfo
-        info.visibleItemsInfo.filter {
-            clippedOverflow(it.offset, it.size, info.viewportStartOffset, info.viewportEndOffset, tolerance) == 0
-        }.mapTo(HashSet()) { it.index }
+    val inBar by remember(barState, tolerance) {
+        derivedStateOf {
+            val info = barState.layoutInfo
+            info.visibleItemsInfo.filter {
+                isFullyVisible(it.offset, it.size, info.viewportStartOffset, info.viewportEndOffset, tolerance)
+            }.mapTo(HashSet()) { it.index }
+        }
     }
     FlowRow(
         modifier.verticalScroll(rememberScrollState()),
@@ -476,6 +479,10 @@ internal fun clippedOverflow(offset: Int, size: Int, viewportStart: Int, viewpor
         else -> 0
     }
 }
+
+/** 候補の全体が表示範囲に収まっているか。表示範囲より広い候補は収まらない。 */
+internal fun isFullyVisible(offset: Int, size: Int, viewportStart: Int, viewportEnd: Int, tolerance: Int): Boolean =
+    size <= viewportEnd - viewportStart && clippedOverflow(offset, size, viewportStart, viewportEnd, tolerance) == 0
 
 @Preview(widthDp = 400)
 @Composable

@@ -70,7 +70,7 @@ class MozcImporter(private val dir: File) {
     /** 読みの数が [PREDICTION_MIN_READINGS] を超える接頭辞ごとの、予測に出す語の上位 ([ExtraKind.Prediction])。 */
     fun predictionTable(entries: List<WordEntry>): List<WordEntry> {
         val classes = posClasses
-        val words = entries.filter { classes[it.lid] == PosClass.Content || classes[it.lid] == PosClass.Number }
+        val words = entries.filter { (classes[it.lid] == PosClass.Content || classes[it.lid] == PosClass.Number) && classes[it.rid] != PosClass.Inflected }
         val readingCounts = HashMap<String, Int>()
         for (reading in words.mapTo(HashSet()) { it.reading }) {
             for (length in 1 until minOf(reading.length, PREDICTION_MAX_PREFIX + 1)) {

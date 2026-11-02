@@ -491,7 +491,9 @@ class Converter(
         }
         val words = ArrayList<WordEntry>()
         dictionary.predictiveSearch(reading, PREDICT_SCAN) { w ->
-            if (w.reading.length > reading.length && dictionary.posClass(w.lid).let { it == PosClass.Content || it == PosClass.Number }) {
+            if (w.reading.length > reading.length && dictionary.posClass(w.lid).let { it == PosClass.Content || it == PosClass.Number } &&
+                dictionary.posClass(w.rid) != PosClass.Inflected
+            ) {
                 words.add(w)
             }
         }

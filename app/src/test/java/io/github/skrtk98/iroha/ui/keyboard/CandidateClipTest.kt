@@ -1,6 +1,8 @@
 package io.github.skrtk98.iroha.ui.keyboard
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CandidateClipTest {
@@ -31,5 +33,11 @@ class CandidateClipTest {
     @Test
     fun itemWiderThanTheViewportCanStillBeSelected() {
         assertEquals(0, overflow(-50, 1200))
+    }
+
+    @Test
+    fun itemWiderThanTheViewportStaysInTheList() {
+        assertFalse(isFullyVisible(900, 1200, 0, 1000, tolerance = 30))
+        assertTrue(isFullyVisible(100, 200, 0, 1000, tolerance = 30))
     }
 }
