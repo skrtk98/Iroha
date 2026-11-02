@@ -114,6 +114,17 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun suggestsWordsThatAlsoWorkAsSuffixes() {
+        val suggestions = converter.suggest("こう").map { it.surface }
+        for (word in listOf("項", "港", "校", "講", "工")) {
+            assertTrue(suggestions.toString(), word in suggestions)
+        }
+        // 接尾辞としての低いコストの順に並ぶ
+        assertTrue(suggestions.toString(), suggestions.indexOf("項") < 10)
+        assertTrue(suggestions.toString(), "管" in converter.suggest("かん").map { it.surface })
+    }
+
+    @Test
     fun suggestsWordsForTheStartOfTheReading() {
         val reading = "こうべつせきぶん"
         val suggestions = converter.suggest(reading)
@@ -155,7 +166,7 @@ class ConverterIntegrationTest {
     fun keepsKanaAndPartsOfTheReadingWhenPredictionsAreMany() {
         val reading = "ありがとう"
         val suggestions = converter.suggest(reading)
-        assertTrue(suggestions.size <= 30)
+        assertTrue(suggestions.size <= 50)
         assertTrue(suggestions.toString(), suggestions.any { it.surface == reading })
         assertTrue(suggestions.toString(), suggestions.any { it.surface == "アリガトウ" })
         assertTrue(suggestions.toString(), suggestions.any { it.reading.length < reading.length })
