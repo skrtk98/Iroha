@@ -137,6 +137,9 @@ class ConverterIntegrationTest {
     fun doesNotPredictInflectedForms() {
         val surfaces = listOf("に", "は", "にん", "はん").flatMap { r -> converter.suggest(r).map { it.surface } }
         for (word in listOf("任ぜ", "反し", "任ず", "早っ")) assertTrue(surfaces.toString(), word !in surfaces)
+        // 副詞と動詞の活用形がつながった語は、語末の品詞で見る (こう|すれ)
+        val kou = converter.suggest("こう").map { it.surface }
+        for (word in listOf("こうし", "こうすれ")) assertTrue(kou.toString(), word !in kou)
     }
 
     @Test

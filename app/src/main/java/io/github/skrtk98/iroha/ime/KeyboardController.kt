@@ -67,6 +67,7 @@ class KeyboardController(
     /** 確定の後に出している続きの候補。 */
     private var followUps: List<Candidate> = emptyList()
     private var suggestionsReading: String? = null
+    private var sessionLearns = false
     private var followUpJob: Job? = null
 
     /** 続きの候補を引くための、直前に確定した文字列。続きの候補を選ぶとつなげていく。 */
@@ -102,13 +103,20 @@ class KeyboardController(
 
     fun onEngineLoaded(engine: Engine) {
         this.engine = engine
-        session = ComposingSession(engine.converter, if (settings.learningEnabled) engine.learning else null)
+        createSession(engine)
         _state.update { it.copy(loading = false) }
+    }
+
+    private fun createSession(engine: Engine) {
+        sessionLearns = settings.learningEnabled
+        session = ComposingSession(engine.converter, if (sessionLearns) engine.learning else null)
     }
 
     fun onStartInput(info: EditorInfo?, restarting: Boolean) {
         // restarting でも別の欄に移っていることがある（Compose の同一ビュー内のフォーカス移動など）ので必ず捨てる
         resetComposition()
+        // 学習の設定は IME を開いたまま変えられるので、次の入力欄から反映する
+        engine?.let { if (settings.learningEnabled != sessionLearns) createSession(it) }
         val inputType = info?.inputType ?: 0
         textSelected = info != null && info.initialSelStart != info.initialSelEnd
         val isNumeric = InputFields.isNumeric(inputType)
