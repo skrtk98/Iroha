@@ -392,7 +392,7 @@ private fun CandidateBar(
 @Composable
 private fun rememberRevealOr(listState: LazyListState): (Int, () -> Unit) -> Unit {
     val scope = rememberCoroutineScope()
-    val tolerance = with(LocalDensity.current) { CANDIDATE_PADDING.roundToPx() }
+    val tolerance = with(LocalDensity.current) { (CANDIDATE_PADDING + CANDIDATE_MARGIN).roundToPx() }
     return remember(listState, scope, tolerance) {
         { index, select ->
             val info = listState.layoutInfo
@@ -410,7 +410,7 @@ private fun CandidateItem(text: String, selected: Boolean, onClick: () -> Unit, 
     val colors = MaterialTheme.colorScheme
     Box(
         modifier
-            .padding(vertical = 4.dp, horizontal = 2.dp)
+            .padding(vertical = 4.dp, horizontal = CANDIDATE_MARGIN)
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) colors.secondaryContainer else colors.surfaceContainer)
             .clickable(onClick = onClick)
@@ -437,7 +437,7 @@ private fun CandidateGrid(
     modifier: Modifier,
 ) {
     // バーに全体が見えている候補は繰り返さない。開いている間はバーのスクロールで変わらないよう、開いた時点の値を使う
-    val tolerance = with(LocalDensity.current) { CANDIDATE_PADDING.roundToPx() }
+    val tolerance = with(LocalDensity.current) { (CANDIDATE_PADDING + CANDIDATE_MARGIN).roundToPx() }
     val inBar = remember(state.candidates) {
         val info = barState.layoutInfo
         info.visibleItemsInfo.filter {
@@ -461,6 +461,7 @@ private fun CandidateGrid(
 }
 
 private val CANDIDATE_PADDING = 12.dp
+private val CANDIDATE_MARGIN = 2.dp
 
 /**
  * 候補が表示範囲からはみ出している量 (スクロールすべき量)。左にはみ出せば負、はみ出していなければ 0。
