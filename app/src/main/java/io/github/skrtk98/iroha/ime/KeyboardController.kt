@@ -64,6 +64,9 @@ class KeyboardController(
     /** 今の入力欄。アプリが同じ欄を始め直したか (restartInput) を見分ける。 */
     private var field: FieldKey? = null
 
+    /** 直前に打ったのが数字か。数字に続く記号 (12:30 の : など) は全角にしない。 */
+    private var afterDigit = false
+
     /** 入力欄で文字列が選択されているか。選択の解除で、選択が無いのにカーソルを動かさないために使う。 */
     private var textSelected = false
 
@@ -118,6 +121,7 @@ class KeyboardController(
     fun onStartInput(info: EditorInfo?, restarting: Boolean) {
         // restarting でも別の欄に移っていることがある（Compose の同一ビュー内のフォーカス移動など）ので必ず捨てる
         resetComposition()
+        afterDigit = false
         // 学習の設定は IME を開いたまま変えられるので、次の入力欄から反映する
         engine?.let { if (settings.learningEnabled != sessionLearns) createSession(it) }
         val inputType = info?.inputType ?: 0
@@ -200,6 +204,7 @@ class KeyboardController(
     fun onAction(action: KeyAction) {
         // 続きの候補は次の操作までのもの。選んだときだけ、その続きをまた出す
         if (action !is KeyAction.SelectFollowUp) clearFollowUps()
+        if (action !is KeyAction.Text) afterDigit = false
         when (action) {
             is KeyAction.Text -> inputText(action.text)
             KeyAction.Backspace -> backspace()
@@ -266,18 +271,29 @@ class KeyboardController(
 
     private fun inputText(text: String) {
         val s = session
-        val face = _state.value.face
+        val state = _state.value
+        val face = state.face
         val kanaFace = face == KeyboardFace.FlickKana || face == KeyboardFace.QwertyKana
-        val shifted = _state.value.shifted && face != KeyboardFace.QwertySymbols
+        val shifted = state.shifted && face != KeyboardFace.QwertySymbols
         // かなの面でもシフト中の英字はローマ字にせず、大文字のまま確定する
         val shiftedLetter = shifted && text.length == 1 && text[0].lowercaseChar() in 'a'..'z'
-        if (s == null || directInput || !kanaFace || shiftedLetter) {
+        // かなの面から移った記号の面では、記号を全角で読みに入れる。変換すれば半角も選べる
+        val fullWidth = if (s != null && !directInput && Faces.isSymbol(face) && !Faces.isAlphabet(state.textFace) &&
+            settings.fullWidthSymbols
+        ) {
+            SymbolInput.fullWidth(text, afterDigit)
+        } else {
+            null
+        }
+        if (s == null || directInput || (!kanaFace && fullWidth == null) || shiftedLetter) {
             commitAll()
             editor.commitText(if (shifted) text.uppercase() else text)
             if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
+            afterDigit = text.lastOrNull()?.let { it in '0'..'9' } == true || afterDigit && Faces.isSymbol(face)
             return
         }
-        val committed = s.insert(text, romaji = face == KeyboardFace.QwertyKana)
+        afterDigit = false
+        val committed = s.insert(fullWidth ?: text, romaji = fullWidth == null && face == KeyboardFace.QwertyKana)
         if (committed.isNotEmpty()) editor.commitText(committed)
         // シフト中の記号（～ や 「 など）は読みに入れ、英字と同じく 1 文字でシフトを戻す
         if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }

@@ -176,7 +176,8 @@ class Converter(
         }
         scored.sortBy { it.cost }
         val fallbackId = dictionary.unknownNounId
-        val fallbacks = listOf(segmentReading, Kana.toKatakana(segmentReading)).distinct()
+        // 全角の記号を打ったときに半角も選べるよう、半角にした読みも残す (：→ :)
+        val fallbacks = listOf(segmentReading, Kana.toKatakana(segmentReading), Kana.toHalfWidth(segmentReading)).distinct()
             .map { Candidate(it, segmentReading, UNKNOWN_COST, fallbackId, fallbackId) }
         // ひらがな・カタカナを必ず残せるよう、その分の枠を空けておく
         val dictionaryLimit = (limit - fallbacks.size).coerceAtLeast(0)
@@ -476,6 +477,7 @@ class Converter(
                 dictionary.unknownNounId, dictionary.unknownNounId,
             ),
         )
+        add(Candidate(Kana.toHalfWidth(reading), reading, UNKNOWN_COST, dictionary.unknownNounId, dictionary.unknownNounId))
         prefixes.forEach(::add)
         return result.values.toList()
     }
