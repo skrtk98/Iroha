@@ -134,6 +134,13 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun offersHalfWidthForFullWidthSymbols() {
+        // かなの面から移った記号の面では全角で打つので、半角も選べるようにする
+        assertTrue(converter.suggest("：").toString(), converter.suggest("：").any { it.surface == ":" })
+        assertTrue(converter.candidates("：", 0, 1).toString(), converter.candidates("：", 0, 1).any { it.surface == ":" })
+    }
+
+    @Test
     fun doesNotPredictInflectedForms() {
         val surfaces = listOf("に", "は", "にん", "はん").flatMap { r -> converter.suggest(r).map { it.surface } }
         for (word in listOf("任ぜ", "反し", "任ず", "早っ")) assertTrue(surfaces.toString(), word !in surfaces)

@@ -51,6 +51,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_FULL_WIDTH_SPACE, false)
         set(value) = prefs.edit().putBoolean(KEY_FULL_WIDTH_SPACE, value).apply()
 
+    /** かなの面から移った数字・記号の面で、記号を全角で未確定文字列に入れる。 */
+    var fullWidthSymbols: Boolean
+        get() = prefs.getBoolean(KEY_FULL_WIDTH_SYMBOLS, true)
+        set(value) = prefs.edit().putBoolean(KEY_FULL_WIDTH_SYMBOLS, value).apply()
+
     var clipboardHistory: Boolean
         get() = prefs.getBoolean(KEY_CLIPBOARD, true)
         set(value) = prefs.edit().putBoolean(KEY_CLIPBOARD, value).apply()
@@ -74,6 +79,7 @@ class Settings(context: Context) {
         private const val KEY_VIBRATE = "vibrate"
         private const val KEY_LEARNING = "learning"
         private const val KEY_FULL_WIDTH_SPACE = "full_width_space"
+        private const val KEY_FULL_WIDTH_SYMBOLS = "full_width_symbols"
         private const val KEY_CLIPBOARD = "clipboard_history"
     }
 }

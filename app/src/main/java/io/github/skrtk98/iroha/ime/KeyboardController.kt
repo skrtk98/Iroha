@@ -266,22 +266,40 @@ class KeyboardController(
 
     private fun inputText(text: String) {
         val s = session
-        val face = _state.value.face
+        val state = _state.value
+        val face = state.face
         val kanaFace = face == KeyboardFace.FlickKana || face == KeyboardFace.QwertyKana
-        val shifted = _state.value.shifted && face != KeyboardFace.QwertySymbols
+        val shifted = state.shifted && face != KeyboardFace.QwertySymbols
         // かなの面でもシフト中の英字はローマ字にせず、大文字のまま確定する
         val shiftedLetter = shifted && text.length == 1 && text[0].lowercaseChar() in 'a'..'z'
-        if (s == null || directInput || !kanaFace || shiftedLetter) {
+        // かなの面から移った記号の面では、記号を全角で読みに入れる。変換すれば半角も選べる
+        val fullWidth = if (s != null && !directInput && Faces.isSymbol(face) && !Faces.isAlphabet(state.textFace) &&
+            settings.fullWidthSymbols
+        ) {
+            SymbolInput.fullWidth(text, charBeforeCursor(s))
+        } else {
+            null
+        }
+        if (s == null || directInput || (!kanaFace && fullWidth == null) || shiftedLetter) {
             commitAll()
             editor.commitText(if (shifted) text.uppercase() else text)
             if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
             return
         }
-        val committed = s.insert(text, romaji = face == KeyboardFace.QwertyKana)
+        val committed = s.insert(fullWidth ?: text, romaji = fullWidth == null && face == KeyboardFace.QwertyKana)
         if (committed.isNotEmpty()) editor.commitText(committed)
         // シフト中の記号（～ や 「 など）は読みに入れ、英字と同じく 1 文字でシフトを戻す
         if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
         render()
+    }
+
+    /** カーソル直前の文字。未確定文字列があればその中の、無ければ入力欄の文字。 */
+    private fun charBeforeCursor(s: ComposingSession): Char? {
+        if (s.isComposing) {
+            val preedit = s.preedit
+            return preedit.text.getOrNull(preedit.caret - 1)
+        }
+        return editor.textBeforeCursor(1)?.lastOrNull()
     }
 
     private fun backspace() {
