@@ -7,17 +7,27 @@ import org.junit.Test
 class SymbolInputTest {
     @Test
     fun widensSymbols() {
-        assertEquals("：", SymbolInput.fullWidth(":", afterDigit = false))
-        assertEquals("（", SymbolInput.fullWidth("(", afterDigit = false))
-        assertEquals("￥", SymbolInput.fullWidth("¥", afterDigit = false))
+        assertEquals("：", SymbolInput.fullWidth(":", before = 'あ'))
+        assertEquals("（", SymbolInput.fullWidth("(", before = null))
+        assertEquals("￥", SymbolInput.fullWidth("¥", before = null))
         // 全角しかない記号はそのまま読みに入れる
-        assertEquals("「", SymbolInput.fullWidth("「", afterDigit = false))
+        assertEquals("「", SymbolInput.fullWidth("「", before = null))
     }
 
     @Test
-    fun keepsDigitsAndSymbolsAfterDigitsHalfWidth() {
-        assertNull(SymbolInput.fullWidth("7", afterDigit = false))
-        assertNull(SymbolInput.fullWidth(":", afterDigit = true))
-        assertNull(SymbolInput.fullWidth(".", afterDigit = true))
+    fun keepsDigitsAndNumberJoinersHalfWidth() {
+        assertNull(SymbolInput.fullWidth("7", before = null))
+        assertNull(SymbolInput.fullWidth(":", before = '2'))
+        assertNull(SymbolInput.fullWidth(".", before = '3'))
+        assertNull(SymbolInput.fullWidth("^", before = '2'))
+        // 数字の直後でなければ全角に戻す (1☆( の ( など)
+        assertEquals("（", SymbolInput.fullWidth("(", before = '☆'))
+    }
+
+    @Test
+    fun widensBracketsAfterDigits() {
+        // （1） のように左右の幅をそろえる
+        assertEquals("）", SymbolInput.fullWidth(")", before = '1'))
+        assertEquals("＂", SymbolInput.fullWidth("\"", before = '1'))
     }
 }
