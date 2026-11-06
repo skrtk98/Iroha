@@ -120,7 +120,7 @@ class KeyboardController(
         val inputType = info?.inputType ?: 0
         textSelected = info != null && info.initialSelStart != info.initialSelEnd
         val isNumeric = InputFields.isNumeric(inputType)
-        val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType))
+        val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType, info?.imeOptions ?: 0))
         // 数値欄は数字の打ちやすいテンキー（フリック）にする
         val face = if (isNumeric) KeyboardFace.FlickNumber else textFace
         // それ以外の欄は、日本語の面に切り替えればローマ字・かなを変換する
