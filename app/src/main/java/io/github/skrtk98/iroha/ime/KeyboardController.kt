@@ -61,6 +61,9 @@ class KeyboardController(
     /** 数字・パスワードの欄。日本語の面でも変換を使わず、打った文字をそのまま入れる。 */
     private var directInput = false
 
+    /** 今の入力欄。アプリが同じ欄を始め直したか (restartInput) を見分ける。 */
+    private var field: FieldKey? = null
+
     /** 入力欄で文字列が選択されているか。選択の解除で、選択が無いのにカーソルを動かさないために使う。 */
     private var textSelected = false
 
@@ -120,15 +123,19 @@ class KeyboardController(
         val inputType = info?.inputType ?: 0
         textSelected = info != null && info.initialSelStart != info.initialSelEnd
         val isNumeric = InputFields.isNumeric(inputType)
-        val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType))
+        val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType, info?.imeOptions ?: 0))
         // 数値欄は数字の打ちやすいテンキー（フリック）にする
         val face = if (isNumeric) KeyboardFace.FlickNumber else textFace
         // それ以外の欄は、日本語の面に切り替えればローマ字・かなを変換する
         directInput = isNumeric || InputFields.isPassword(inputType)
+        val current = info?.let { FieldKey(it.packageName, it.fieldId, inputType, it.imeOptions) }
+        // 同じ欄の始め直しでは、利用者が切り替えた面を保つ。英字で始める欄で日本語に切り替えた後に戻されないように
+        val keepFace = restarting && current != null && current == field
+        field = current
         _state.update {
             it.copy(
-                face = face,
-                textFace = textFace,
+                face = if (keepFace) it.face else face,
+                textFace = if (keepFace) it.textFace else textFace,
                 shift = ShiftState.Off,
                 moreSymbols = false,
                 enterKind = enterKindOf(info),
@@ -569,3 +576,6 @@ class KeyboardController(
 
 /** 続きの候補を引くときに見る、直前に確定した文字列の長さ。 */
 private const val FOLLOW_UP_TAIL = 40
+
+/** 入力欄を見分ける鍵。Chrome のように 1 つのビューに複数の欄があると、同じ種類の別の欄とは見分けられない。 */
+private data class FieldKey(val packageName: String?, val fieldId: Int, val inputType: Int, val imeOptions: Int)
