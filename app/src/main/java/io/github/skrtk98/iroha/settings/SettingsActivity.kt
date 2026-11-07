@@ -14,8 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
 import io.github.skrtk98.iroha.IrohaApplication
 import io.github.skrtk98.iroha.ui.theme.IrohaTheme
 
@@ -49,7 +47,7 @@ class SettingsActivity : ComponentActivity() {
                         getSystemService(InputMethodManager::class.java).showInputMethodPicker()
                     },
                     onOpenUserDictionary = { startActivity(Intent(this, UserDictionaryActivity::class.java)) },
-                    onClearLearning = { lifecycleScope.launch { app.engineRepository.clearLearning() } },
+                    onClearLearning = { app.engineRepository.clearLearning() },
                     onOpenLicenses = { startActivity(Intent(this, LicensesActivity::class.java)) },
                     onClearClipboard = { app.clipboardRepository.clearAll() },
                     micGranted = micGranted,

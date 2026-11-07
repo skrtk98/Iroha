@@ -141,11 +141,12 @@ class EngineRepository(
         }
     }
 
-    suspend fun clearLearning() {
+    /** 学習結果を消す。保存してあった学習結果のファイルも消せたかを返す。 */
+    suspend fun clearLearning(): Boolean {
         val engine = load()
-        learningMutex.withLock {
+        return learningMutex.withLock {
             engine.learning.clear()
-            withContext(Dispatchers.IO) { learningFile.delete() }
+            withContext(Dispatchers.IO) { learningFile.delete() || !learningFile.exists() }
         }
     }
 

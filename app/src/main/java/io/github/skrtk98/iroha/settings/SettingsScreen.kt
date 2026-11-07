@@ -52,6 +52,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.skrtk98.iroha.R
@@ -89,9 +91,9 @@ fun SettingsRoute(
     onOpenInputMethodSettings: () -> Unit,
     onShowInputMethodPicker: () -> Unit,
     onOpenUserDictionary: () -> Unit,
-    onClearLearning: () -> Unit,
+    onClearLearning: suspend () -> Boolean,
     onOpenLicenses: () -> Unit,
-    onClearClipboard: () -> Unit,
+    onClearClipboard: suspend () -> Boolean,
     micGranted: Boolean,
     onRequestMic: () -> Unit,
 ) {
@@ -140,9 +142,19 @@ fun SettingsRoute(
 }
 
 /** 確認してから消去する対象。 */
-private enum class ClearTarget(val title: String, val text: String, val done: String) {
-    Learning("学習結果を消去", "選んだ候補の順位がはじめの状態に戻ります。ユーザー辞書の単語は消えません。", "学習結果を消去しました"),
-    Clipboard("履歴をすべて消去", "固定した項目も含めて、すべての履歴を消去します。", "クリップボードの履歴を消去しました"),
+private enum class ClearTarget(val title: String, val text: String, val done: String, val failed: String) {
+    Learning(
+        "学習結果を消去",
+        "選んだ候補の順位がはじめの状態に戻ります。ユーザー辞書の単語は消えません。",
+        "学習結果を消去しました",
+        "学習結果のファイルを消せませんでした。アプリを再起動すると元に戻ることがあります",
+    ),
+    Clipboard(
+        "履歴をすべて消去",
+        "固定した項目も含めて、すべての履歴を消去します。",
+        "クリップボードの履歴を消去しました",
+        "履歴を保存できませんでした。アプリを再起動すると元に戻ることがあります",
+    ),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -163,9 +175,9 @@ fun SettingsScreen(
     onFullWidthSymbolsChange: (Boolean) -> Unit,
     onLearningChange: (Boolean) -> Unit,
     onOpenUserDictionary: () -> Unit,
-    onClearLearning: () -> Unit,
+    onClearLearning: suspend () -> Boolean,
     onClipboardHistoryChange: (Boolean) -> Unit,
-    onClearClipboard: () -> Unit,
+    onClearClipboard: suspend () -> Boolean,
     micGranted: Boolean,
     onRequestMic: () -> Unit,
     onOpenLicenses: () -> Unit,
@@ -210,6 +222,8 @@ fun SettingsScreen(
                             keyboard?.show()
                             onStartResize()
                         },
+                        // 見出しを詰めないよう表示は短くし、読み上げでは何を調整するかまで伝える
+                        modifier = Modifier.semantics { contentDescription = "キーボードの高さを調整" },
                     ) { Text("調整") }
                 },
             )
@@ -281,7 +295,10 @@ fun SettingsScreen(
                     if (micGranted) {
                         Icon(painterResource(R.drawable.ic_check_circle), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     } else {
-                        OutlinedButton(onClick = onRequestMic) { Text("許可する") }
+                        OutlinedButton(
+                            onClick = onRequestMic,
+                            modifier = Modifier.semantics { contentDescription = "マイクの権限を許可" },
+                        ) { Text("許可") }
                     }
                 },
             )
@@ -308,11 +325,14 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         confirming = null
-                        when (target) {
-                            ClearTarget.Learning -> onClearLearning()
-                            ClearTarget.Clipboard -> onClearClipboard()
+                        // 保存まで終えてから結果を知らせる
+                        scope.launch {
+                            val cleared = when (target) {
+                                ClearTarget.Learning -> onClearLearning()
+                                ClearTarget.Clipboard -> onClearClipboard()
+                            }
+                            snackbar.showSnackbar(if (cleared) target.done else target.failed)
                         }
-                        scope.launch { snackbar.showSnackbar(target.done) }
                     },
                 ) { Text("消去", color = MaterialTheme.colorScheme.error) }
             },
@@ -456,25 +476,22 @@ fun SwitchItem(
     )
 }
 
-/** フリックと QWERTY を選ぶ項目。 */
+/** フリックと QWERTY を選ぶ項目。文字を大きくした狭い画面でも見出しが潰れないよう、ボタンは見出しの下に並べる。 */
 @Composable
 private fun LayoutItem(label: String, selected: KeyboardLayout, onChange: (KeyboardLayout) -> Unit) {
-    SettingItem(
-        headline = label,
-        trailing = {
-            SingleChoiceSegmentedButtonRow {
-                val options = listOf(KeyboardLayout.Flick to "フリック", KeyboardLayout.Qwerty to "QWERTY")
-                options.forEachIndexed { index, (layout, name) ->
-                    SegmentedButton(
-                        selected = selected == layout,
-                        onClick = { onChange(layout) },
-                        shape = SegmentedButtonDefaults.itemShape(index, options.size),
-                        icon = {},
-                    ) { Text(name) }
-                }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            val options = listOf(KeyboardLayout.Flick to "フリック", KeyboardLayout.Qwerty to "QWERTY")
+            options.forEachIndexed { index, (layout, name) ->
+                SegmentedButton(
+                    selected = selected == layout,
+                    onClick = { onChange(layout) },
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                ) { Text(name) }
             }
-        },
-    )
+        }
+    }
 }
 
 @Preview(heightDp = 2000)
@@ -497,9 +514,9 @@ private fun SettingsScreenPreview() {
             onFullWidthSymbolsChange = {},
             onLearningChange = {},
             onOpenUserDictionary = {},
-            onClearLearning = {},
+            onClearLearning = { true },
             onClipboardHistoryChange = {},
-            onClearClipboard = {},
+            onClearClipboard = { true },
             micGranted = false,
             onRequestMic = {},
             onOpenLicenses = {},
