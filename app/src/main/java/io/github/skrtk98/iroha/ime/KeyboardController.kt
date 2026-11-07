@@ -151,6 +151,7 @@ class KeyboardController(
         keyboardHeightPercent = settings.keyboardHeightPercent,
         keyBorders = settings.keyBorders,
         qwertyNumberRow = settings.qwertyNumberRow,
+        fullWidthSymbols = settings.fullWidthSymbols && !directInput,
         vibrate = settings.vibrate,
     )
 
@@ -273,13 +274,8 @@ class KeyboardController(
         // かなの面でもシフト中の英字はローマ字にせず、大文字のまま確定する
         val shiftedLetter = shifted && text.length == 1 && text[0].lowercaseChar() in 'a'..'z'
         // かなの面から移った記号の面では、記号を全角で読みに入れる。変換すれば半角も選べる
-        val fullWidth = if (s != null && !directInput && Faces.isSymbol(face) && !Faces.isAlphabet(state.textFace) &&
-            settings.fullWidthSymbols
-        ) {
-            SymbolInput.fullWidth(text, charBeforeCursor(s))
-        } else {
-            null
-        }
+        // キーの印字も同じ state.widensSymbols で全角にしている
+        val fullWidth = if (s != null && state.widensSymbols) SymbolInput.fullWidth(text, charBeforeCursor(s)) else null
         if (s == null || directInput || (!kanaFace && fullWidth == null) || shiftedLetter) {
             commitAll()
             editor.commitText(if (shifted) text.uppercase() else text)

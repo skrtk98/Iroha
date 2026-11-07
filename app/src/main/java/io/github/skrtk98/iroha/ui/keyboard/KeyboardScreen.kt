@@ -181,6 +181,7 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             spaceKind = state.spaceKind,
             onAction = onAction,
             modifier = modifier,
+            widenSymbols = state.widensSymbols,
         )
         KeyboardFace.QwertyKana, KeyboardFace.QwertyAlphabet, KeyboardFace.QwertySymbols -> QwertyKeyboard(
             face = state.face,
@@ -193,6 +194,7 @@ private fun KeyboardArea(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
             moreSymbols = state.moreSymbols,
             onAction = onAction,
             modifier = modifier,
+            widenSymbols = state.widensSymbols,
         )
     }
 }
