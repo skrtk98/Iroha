@@ -35,6 +35,9 @@ enum class ExtraKind(val marker: Char) {
 
     /** 予測に出さない語。読みも表記も語そのもの (suggestion_filter.txt)。 */
     SuggestionFilter(''),
+
+    /** 読みの数が多い接頭辞で、予測に出す語の上位。表記は「読み<TAB>表記」。予め選んでおき、打鍵ごとに全部を調べない。 */
+    Prediction(''),
     ;
 
     fun key(reading: CharSequence): String = marker + reading.toString()

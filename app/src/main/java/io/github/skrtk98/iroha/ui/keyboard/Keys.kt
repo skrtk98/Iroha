@@ -1,5 +1,6 @@
 package io.github.skrtk98.iroha.ui.keyboard
 
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
@@ -246,6 +247,10 @@ fun FlickKeyButton(
                     pressed = true
                     haptic()
                     var direction = FlickDirection.Center
+                    // タップだけならガイドは出さない。指が動き出すか、止めたまま待つと出す
+                    var guideShown = false
+                    // イベントの時刻は SystemClock.uptimeMillis と同じ基準。配送の遅れも待ち時間に含める
+                    val guideAt = down.uptimeMillis + GUIDE_DELAY_MS
                     fun publishGuide() {
                         val own = coordinates[0]
                         val root = currentRoot()
@@ -255,26 +260,41 @@ fun FlickKeyButton(
                             FlickGuide(key, origin, own.size.width.toFloat(), own.size.height.toFloat(), direction),
                         )
                     }
-                    publishGuide()
                     try {
                         while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            val next = directionOf(change.position - down.position, thresholdPx)
-                                .takeIf { key.output(it) != null } ?: FlickDirection.Center
-                            if (next != direction) {
-                                direction = next
+                            val remaining = guideAt - SystemClock.uptimeMillis()
+                            if (!guideShown && remaining <= 0L) {
+                                guideShown = true
                                 publishGuide()
+                            }
+                            val event = if (guideShown) {
+                                awaitPointerEvent()
+                            } else {
+                                withTimeoutOrNull(remaining) { awaitPointerEvent() } ?: continue
+                            }
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            // 取り消し（ACTION_CANCEL）は消費済みの離す操作として届く。文字は入れない
+                            val cancelled = !change.pressed && change.isConsumed
+                            val delta = change.position - down.position
+                            val next = directionOf(delta, thresholdPx)
+                                .takeIf { key.output(it) != null } ?: FlickDirection.Center
+                            val showNow = !guideShown && change.pressed &&
+                                delta.getDistance() > viewConfiguration.touchSlop
+                            if (showNow) guideShown = true
+                            if (next != direction || showNow) {
+                                direction = next
+                                if (guideShown) publishGuide()
                             }
                             change.consume()
                             if (!change.pressed) {
-                                key.output(direction)?.let(currentOnInput)
+                                if (!cancelled) key.output(direction)?.let(currentOnInput)
                                 break
                             }
                         }
                     } finally {
                         pressed = false
-                        currentOnGuide(null)
+                        // ガイドを出していないキーは、ほかの指で押しているキーのガイドを消さない
+                        if (guideShown) currentOnGuide(null)
                     }
                 }
             },
@@ -344,5 +364,7 @@ fun FlickGuideOverlay(guide: FlickGuide, modifier: Modifier = Modifier) {
     }
 }
 
+/** 指を止めたままフリックのガイドを出すまでの時間。 */
+private const val GUIDE_DELAY_MS = 300L
 private const val REPEAT_START_MS = 400L
 private const val REPEAT_INTERVAL_MS = 50L

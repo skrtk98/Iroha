@@ -50,7 +50,8 @@ fun main(args: Array<String>) {
     }
 
     val importer = MozcImporter(cacheDir)
-    val entries = (importer.readEntries(maxCost) + importer.readExtras()).filterNot { hasHentaigana(it.surface) }
+    val words = importer.readEntries(maxCost).filterNot { hasHentaigana(it.surface) }
+    val entries = words + importer.predictionTable(words) + importer.readExtras().filterNot { hasHentaigana(it.surface) }
     val (matrix, dim) = importer.readMatrix()
     output.parentFile?.mkdirs()
     output.outputStream().use { out ->

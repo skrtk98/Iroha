@@ -114,6 +114,42 @@ class ConverterIntegrationTest {
     }
 
     @Test
+    fun suggestsWordsThatAlsoWorkAsSuffixes() {
+        val suggestions = converter.suggest("こう").map { it.surface }
+        for (word in listOf("項", "港", "校", "講", "工")) {
+            assertTrue(suggestions.toString(), word in suggestions)
+        }
+        // 接尾辞としての低いコストの順に並ぶ
+        assertTrue(suggestions.toString(), suggestions.indexOf("項") < 10)
+        assertTrue(suggestions.toString(), "管" in converter.suggest("かん").map { it.surface })
+    }
+
+    @Test
+    fun predictsLongerWordsForShortReadings() {
+        // 「か」で始まる読みは数万あり、読みの順に途中まで調べるだけでは「かん」の語に偏っていた
+        val words = converter.suggest("か").filter { it.reading.length > 1 }
+        assertTrue(words.toString(), words.any { !it.reading.startsWith("かん") })
+        // 読み全体の語が多くても、長い語の枠を残す
+        assertTrue(converter.suggest("こう").toString(), converter.suggest("こう").any { it.reading.length > 2 })
+    }
+
+    @Test
+    fun offersHalfWidthForFullWidthSymbols() {
+        // かなの面から移った記号の面では全角で打つので、半角も選べるようにする
+        assertTrue(converter.suggest("：").toString(), converter.suggest("：").any { it.surface == ":" })
+        assertTrue(converter.candidates("：", 0, 1).toString(), converter.candidates("：", 0, 1).any { it.surface == ":" })
+    }
+
+    @Test
+    fun doesNotPredictInflectedForms() {
+        val surfaces = listOf("に", "は", "にん", "はん").flatMap { r -> converter.suggest(r).map { it.surface } }
+        for (word in listOf("任ぜ", "反し", "任ず", "早っ")) assertTrue(surfaces.toString(), word !in surfaces)
+        // 副詞と動詞の活用形がつながった語は、語末の品詞で見る (こう|すれ)
+        val kou = converter.suggest("こう").map { it.surface }
+        for (word in listOf("こうし", "こうすれ")) assertTrue(kou.toString(), word !in kou)
+    }
+
+    @Test
     fun suggestsWordsForTheStartOfTheReading() {
         val reading = "こうべつせきぶん"
         val suggestions = converter.suggest(reading)
@@ -155,7 +191,7 @@ class ConverterIntegrationTest {
     fun keepsKanaAndPartsOfTheReadingWhenPredictionsAreMany() {
         val reading = "ありがとう"
         val suggestions = converter.suggest(reading)
-        assertTrue(suggestions.size <= 30)
+        assertTrue(suggestions.size <= 50)
         assertTrue(suggestions.toString(), suggestions.any { it.surface == reading })
         assertTrue(suggestions.toString(), suggestions.any { it.surface == "アリガトウ" })
         assertTrue(suggestions.toString(), suggestions.any { it.reading.length < reading.length })

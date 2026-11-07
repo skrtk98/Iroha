@@ -50,6 +50,7 @@ data class SettingsUiState(
     val qwertyNumberRow: Boolean = false,
     val vibrate: Boolean,
     val fullWidthSpace: Boolean,
+    val fullWidthSymbols: Boolean = true,
     val learningEnabled: Boolean,
     val clipboardHistory: Boolean = true,
 )
@@ -74,6 +75,7 @@ fun SettingsRoute(
         qwertyNumberRow = settings.qwertyNumberRow,
         vibrate = settings.vibrate,
         fullWidthSpace = settings.fullWidthSpace,
+        fullWidthSymbols = settings.fullWidthSymbols,
         learningEnabled = settings.learningEnabled,
         clipboardHistory = settings.clipboardHistory,
     )
@@ -95,6 +97,7 @@ fun SettingsRoute(
         onQwertyNumberRowChange = { update { qwertyNumberRow = it } },
         onVibrateChange = { update { vibrate = it } },
         onFullWidthSpaceChange = { update { fullWidthSpace = it } },
+        onFullWidthSymbolsChange = { update { fullWidthSymbols = it } },
         onLearningChange = { update { learningEnabled = it } },
         onClipboardHistoryChange = { update { clipboardHistory = it } },
         onClearClipboard = onClearClipboard,
@@ -118,6 +121,7 @@ fun SettingsScreen(
     onQwertyNumberRowChange: (Boolean) -> Unit,
     onVibrateChange: (Boolean) -> Unit,
     onFullWidthSpaceChange: (Boolean) -> Unit,
+    onFullWidthSymbolsChange: (Boolean) -> Unit,
     onLearningChange: (Boolean) -> Unit,
     onClipboardHistoryChange: (Boolean) -> Unit,
     onClearClipboard: () -> Unit,
@@ -176,6 +180,7 @@ fun SettingsScreen(
             SwitchRow("QWERTY の日本語・英字で数字の段を表示する", state.qwertyNumberRow, onQwertyNumberRowChange)
             SwitchRow("キーを押したときに振動", state.vibrate, onVibrateChange)
             SwitchRow("かな入力の空白を全角にする", state.fullWidthSpace, onFullWidthSpaceChange)
+            SwitchRow("かな入力の記号を全角にする", state.fullWidthSymbols, onFullWidthSymbolsChange)
 
             HorizontalDivider()
             SectionTitle("変換")
@@ -274,6 +279,7 @@ private fun SettingsScreenPreview() {
             onQwertyNumberRowChange = {},
             onVibrateChange = {},
             onFullWidthSpaceChange = {},
+            onFullWidthSymbolsChange = {},
             onLearningChange = {},
             onClipboardHistoryChange = {},
             onClearClipboard = {},

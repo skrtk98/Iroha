@@ -18,12 +18,13 @@ object Kana {
         for (c in text) append(if (c in 'ァ'..'ヶ') c - KATA_OFFSET else c)
     }
 
-    /** ASCII の印字可能文字を全角に変換する。 */
+    /** ASCII の印字可能文字と ¥ を全角に変換する。 */
     fun toFullWidth(text: CharSequence): String = buildString(text.length) {
         for (c in text) {
             append(
                 when (c) {
                     ' ' -> '　'
+                    '¥' -> '￥'
                     in '!'..'~' -> c + 0xFEE0
                     else -> c
                 },
@@ -37,6 +38,7 @@ object Kana {
             append(
                 when (c) {
                     '　' -> ' '
+                    '￥' -> '¥'
                     in '！'..'～' -> c - 0xFEE0
                     else -> c
                 },

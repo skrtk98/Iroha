@@ -57,12 +57,39 @@ class MozcImporter(private val dir: File) {
         val main = mainDictionary
         val aux = readAuxDictionary(main)
         val manual = readManualWords(main, aux)
-        val pruned = main.filter { classes[it.lid] != PosClass.Content || it.cost < maxContentCost }
+        val pruned = main.filter {
+            (classes[it.lid] != PosClass.Content && classes[it.lid] != PosClass.Inflected) || it.cost < maxContentCost
+        }
         val filter = readDictionaryFilter()
         return (pruned + aux + manual)
             .filter { it.reading.length <= SystemDictionary.MAX_READING_CHARS }
             .filterNot { word -> filter.any { (key, value) -> key.matches(word.reading) && value.matches(word.surface) } }
             .distinct()
+    }
+
+    /** 読みの数が [PREDICTION_MIN_READINGS] を超える接頭辞ごとの、予測に出す語の上位 ([ExtraKind.Prediction])。 */
+    fun predictionTable(entries: List<WordEntry>): List<WordEntry> {
+        val classes = posClasses
+        val words = entries.filter { (classes[it.lid] == PosClass.Content || classes[it.lid] == PosClass.Number) && classes[it.rid] != PosClass.Inflected }
+        val readingCounts = HashMap<String, Int>()
+        for (reading in words.mapTo(HashSet()) { it.reading }) {
+            for (length in 1 until minOf(reading.length, PREDICTION_MAX_PREFIX + 1)) {
+                readingCounts.merge(reading.substring(0, length), 1, Int::plus)
+            }
+        }
+        val prefixes = readingCounts.filterValues { it > PREDICTION_MIN_READINGS }.keys
+        val byPrefix = HashMap<String, ArrayList<WordEntry>>()
+        for (word in words) {
+            for (length in 1 until minOf(word.reading.length, PREDICTION_MAX_PREFIX + 1)) {
+                val prefix = word.reading.substring(0, length)
+                if (prefix in prefixes) byPrefix.getOrPut(prefix) { ArrayList() }.add(word)
+            }
+        }
+        return byPrefix.flatMap { (prefix, list) ->
+            list.sortedBy { it.cost }.distinctBy { it.surface }.take(PREDICTION_WORDS).map {
+                it.copy(reading = ExtraKind.Prediction.key(prefix), surface = it.reading + '\t' + it.surface)
+            }
+        }
     }
 
     /** dictionary00〜09 のすべての語。 */
@@ -210,6 +237,9 @@ class MozcImporter(private val dir: File) {
         }
 
     companion object {
+        private const val PREDICTION_MIN_READINGS = 1000
+        private const val PREDICTION_MAX_PREFIX = 4
+        private const val PREDICTION_WORDS = 30
         /** 取得元の mozc リビジョン。辞書を更新するときはここを変える。 */
         const val MOZC_COMMIT = "0136c35782536cb43d710575c311cd4185982738"
 

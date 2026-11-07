@@ -41,8 +41,8 @@ class SegmentRules(
             val boundary = BooleanArray(kinds.size * kinds.size) { index ->
                 val left = kinds[index / kinds.size]
                 when (kinds[index % kinds.size]) {
-                    PosClass.Functional -> left == PosClass.Symbol
-                    PosClass.Content, PosClass.Prefix, PosClass.Number -> left != PosClass.Prefix
+                    PosClass.Functional, PosClass.Suffix -> left == PosClass.Symbol
+                    PosClass.Content, PosClass.Inflected, PosClass.Prefix, PosClass.Number -> left != PosClass.Prefix
                     PosClass.Symbol -> true
                 }
             }

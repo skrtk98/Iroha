@@ -12,6 +12,7 @@ import io.github.skrtk98.iroha.engine.user.UserDictionaryTsv
 import io.github.skrtk98.iroha.engine.user.UserWord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +24,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.nio.channels.FileChannel
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** 読み込み済みの変換エンジン一式。 */
 class Engine(
@@ -70,6 +72,7 @@ class EngineRepository(
     // load() の mutex とは分ける。Mutex は再入できず、更新の中で load() を呼ぶため。
     private val userDictionaryMutex = Mutex()
     private val learningMutex = Mutex()
+    private val learningSaveScheduled = AtomicBoolean(false)
     private val _engine = MutableStateFlow<Engine?>(null)
     val engine: StateFlow<Engine?> = _engine.asStateFlow()
 
@@ -92,6 +95,7 @@ class EngineRepository(
         }
         val learning = LearningStore()
         if (learningFile.exists()) learning.deserialize(learningFile.readText())
+        learning.onLearned = ::scheduleLearningSave
         return Engine(dictionary, languageModel, userDictionary, learning)
     }
 
@@ -113,12 +117,27 @@ class EngineRepository(
 
     /** 学習結果をバックグラウンドで保存する。IME を閉じたときに呼ぶ。 */
     fun saveLearningAsync() {
-        val engine = _engine.value ?: return
+        appScope.launch(Dispatchers.IO) { saveLearning() }
+    }
+
+    /**
+     * 覚えてから少し後に保存する。入力欄を閉じないままプロセスが終わっても、失うのはこの間の分だけで済む。
+     * 続けて覚えた分は同じ保存にまとめる。
+     */
+    private fun scheduleLearningSave() {
+        if (!learningSaveScheduled.compareAndSet(false, true)) return
         appScope.launch(Dispatchers.IO) {
-            learningMutex.withLock {
-                runCatching { writeAtomically(learningFile, engine.learning.serialize()) }
-                    .onFailure { Log.w(TAG, "failed to save learning", it) }
-            }
+            delay(LEARNING_SAVE_DELAY_MILLIS)
+            learningSaveScheduled.set(false)
+            saveLearning()
+        }
+    }
+
+    private suspend fun saveLearning() {
+        val engine = _engine.value ?: return
+        learningMutex.withLock {
+            runCatching { writeAtomically(learningFile, engine.learning.serialize()) }
+                .onFailure { Log.w(TAG, "failed to save learning", it) }
         }
     }
 
@@ -150,6 +169,7 @@ class EngineRepository(
 
     private companion object {
         const val TAG = "EngineRepository"
+        const val LEARNING_SAVE_DELAY_MILLIS = 5_000L
         const val DICTIONARY_ASSET = "iroha.dic"
         const val LANGUAGE_MODEL_ASSET = "iroha.lm"
     }
