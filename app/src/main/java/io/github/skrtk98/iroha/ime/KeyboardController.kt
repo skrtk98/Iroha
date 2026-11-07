@@ -61,12 +61,16 @@ class KeyboardController(
     /** 数字・パスワードの欄。日本語の面でも変換を使わず、打った文字をそのまま入れる。 */
     private var directInput = false
 
+    /** 今の入力欄。アプリが同じ欄を始め直したか (restartInput) を見分ける。 */
+    private var field: FieldKey? = null
+
     /** 入力欄で文字列が選択されているか。選択の解除で、選択が無いのにカーソルを動かさないために使う。 */
     private var textSelected = false
 
     /** 確定の後に出している続きの候補。 */
     private var followUps: List<Candidate> = emptyList()
     private var suggestionsReading: String? = null
+    private var sessionLearns = false
     private var followUpJob: Job? = null
 
     /** 続きの候補を引くための、直前に確定した文字列。続きの候補を選ぶとつなげていく。 */
@@ -102,25 +106,36 @@ class KeyboardController(
 
     fun onEngineLoaded(engine: Engine) {
         this.engine = engine
-        session = ComposingSession(engine.converter, if (settings.learningEnabled) engine.learning else null)
+        createSession(engine)
         _state.update { it.copy(loading = false) }
+    }
+
+    private fun createSession(engine: Engine) {
+        sessionLearns = settings.learningEnabled
+        session = ComposingSession(engine.converter, if (sessionLearns) engine.learning else null)
     }
 
     fun onStartInput(info: EditorInfo?, restarting: Boolean) {
         // restarting でも別の欄に移っていることがある（Compose の同一ビュー内のフォーカス移動など）ので必ず捨てる
         resetComposition()
+        // 学習の設定は IME を開いたまま変えられるので、次の入力欄から反映する
+        engine?.let { if (settings.learningEnabled != sessionLearns) createSession(it) }
         val inputType = info?.inputType ?: 0
         textSelected = info != null && info.initialSelStart != info.initialSelEnd
         val isNumeric = InputFields.isNumeric(inputType)
-        val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType))
+        val textFace = Faces.text(settings.defaultLayout, alphabet = InputFields.startsInAlphabet(inputType, info?.imeOptions ?: 0))
         // 数値欄は数字の打ちやすいテンキー（フリック）にする
         val face = if (isNumeric) KeyboardFace.FlickNumber else textFace
         // それ以外の欄は、日本語の面に切り替えればローマ字・かなを変換する
         directInput = isNumeric || InputFields.isPassword(inputType)
+        val current = info?.let { FieldKey(it.packageName, it.fieldId, inputType, it.imeOptions) }
+        // 同じ欄の始め直しでは、利用者が切り替えた面を保つ。英字で始める欄で日本語に切り替えた後に戻されないように
+        val keepFace = restarting && current != null && current == field
+        field = current
         _state.update {
             it.copy(
-                face = face,
-                textFace = textFace,
+                face = if (keepFace) it.face else face,
+                textFace = if (keepFace) it.textFace else textFace,
                 shift = ShiftState.Off,
                 moreSymbols = false,
                 enterKind = enterKindOf(info),
@@ -251,22 +266,40 @@ class KeyboardController(
 
     private fun inputText(text: String) {
         val s = session
-        val face = _state.value.face
+        val state = _state.value
+        val face = state.face
         val kanaFace = face == KeyboardFace.FlickKana || face == KeyboardFace.QwertyKana
-        val shifted = _state.value.shifted && face != KeyboardFace.QwertySymbols
+        val shifted = state.shifted && face != KeyboardFace.QwertySymbols
         // かなの面でもシフト中の英字はローマ字にせず、大文字のまま確定する
         val shiftedLetter = shifted && text.length == 1 && text[0].lowercaseChar() in 'a'..'z'
-        if (s == null || directInput || !kanaFace || shiftedLetter) {
+        // かなの面から移った記号の面では、記号を全角で読みに入れる。変換すれば半角も選べる
+        val fullWidth = if (s != null && !directInput && Faces.isSymbol(face) && !Faces.isAlphabet(state.textFace) &&
+            settings.fullWidthSymbols
+        ) {
+            SymbolInput.fullWidth(text, charBeforeCursor(s))
+        } else {
+            null
+        }
+        if (s == null || directInput || (!kanaFace && fullWidth == null) || shiftedLetter) {
             commitAll()
             editor.commitText(if (shifted) text.uppercase() else text)
             if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
             return
         }
-        val committed = s.insert(text, romaji = face == KeyboardFace.QwertyKana)
+        val committed = s.insert(fullWidth ?: text, romaji = fullWidth == null && face == KeyboardFace.QwertyKana)
         if (committed.isNotEmpty()) editor.commitText(committed)
         // シフト中の記号（～ や 「 など）は読みに入れ、英字と同じく 1 文字でシフトを戻す
         if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
         render()
+    }
+
+    /** カーソル直前の文字。未確定文字列があればその中の、無ければ入力欄の文字。 */
+    private fun charBeforeCursor(s: ComposingSession): Char? {
+        if (s.isComposing) {
+            val preedit = s.preedit
+            return preedit.text.getOrNull(preedit.caret - 1)
+        }
+        return editor.textBeforeCursor(1)?.lastOrNull()
     }
 
     private fun backspace() {
@@ -561,3 +594,6 @@ class KeyboardController(
 
 /** 続きの候補を引くときに見る、直前に確定した文字列の長さ。 */
 private const val FOLLOW_UP_TAIL = 40
+
+/** 入力欄を見分ける鍵。Chrome のように 1 つのビューに複数の欄があると、同じ種類の別の欄とは見分けられない。 */
+private data class FieldKey(val packageName: String?, val fieldId: Int, val inputType: Int, val imeOptions: Int)

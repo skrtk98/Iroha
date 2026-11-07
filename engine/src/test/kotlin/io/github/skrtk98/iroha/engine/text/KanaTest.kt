@@ -12,6 +12,8 @@ class KanaTest {
         assertEquals("ｶﾞｯﾂ", Kana.toHalfWidthKatakana("がっつ"))
         assertEquals("ＡＢＣ１", Kana.toFullWidth("ABC1"))
         assertEquals("ABC1", Kana.toHalfWidth("ＡＢＣ１"))
+        assertEquals("：￥", Kana.toFullWidth(":¥"))
+        assertEquals(":¥", Kana.toHalfWidth("：￥"))
     }
 
     @Test

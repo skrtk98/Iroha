@@ -1,6 +1,7 @@
 package io.github.skrtk98.iroha.ime
 
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,6 +30,14 @@ class InputFieldsTest {
         val email = text or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
         assertTrue(InputFields.startsInAlphabet(email))
         assertFalse(InputFields.isPassword(email))
+    }
+
+    @Test
+    fun forceAsciiFieldsStartInAlphabetButCanConvert() {
+        // ログイン ID の欄のように、種類は文字のままで英字を求める
+        assertTrue(InputFields.startsInAlphabet(text, EditorInfo.IME_FLAG_FORCE_ASCII or EditorInfo.IME_ACTION_NEXT))
+        assertFalse(InputFields.startsInAlphabet(text, EditorInfo.IME_ACTION_NEXT))
+        assertFalse(InputFields.isPassword(text))
     }
 
     @Test

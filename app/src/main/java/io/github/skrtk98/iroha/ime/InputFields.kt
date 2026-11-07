@@ -1,6 +1,7 @@
 package io.github.skrtk98.iroha.ime
 
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 
 /** 入力欄の種類（EditorInfo.inputType）から、キーボードの始め方を決める。 */
 object InputFields {
@@ -17,9 +18,12 @@ object InputFields {
 
     /**
      * 英字の面で始める欄。URL の欄は Chrome のアドレスバーのように検索を兼ねることが多いので、日本語で始める。
+     * アカウント ID の欄などは、種類を文字のままにして [EditorInfo.IME_FLAG_FORCE_ASCII] で英字を求めることがある。
      */
-    fun startsInAlphabet(inputType: Int): Boolean =
-        isPassword(inputType) || isText(inputType) && variationOf(inputType) in EMAIL_VARIATIONS
+    fun startsInAlphabet(inputType: Int, imeOptions: Int = 0): Boolean =
+        isPassword(inputType) ||
+            isText(inputType) && variationOf(inputType) in EMAIL_VARIATIONS ||
+            imeOptions and EditorInfo.IME_FLAG_FORCE_ASCII != 0
 
     /** Enter で改行の文字を入れる、複数行の欄。 */
     fun entersNewlineAsText(inputType: Int): Boolean =

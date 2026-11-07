@@ -26,9 +26,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -39,10 +41,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +70,7 @@ import io.github.skrtk98.iroha.ime.KeyboardUiState
 import io.github.skrtk98.iroha.ime.Panel
 import io.github.skrtk98.iroha.ui.theme.IrohaTheme
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 private val BarHeight = 44.dp
 private val MinBarHeight = 36.dp
@@ -93,6 +98,8 @@ fun KeyboardScreen(
     val barHeight = (BarHeight * scale).coerceAtLeast(MinBarHeight)
     // どの面・画面でも同じ高さにする。QWERTY の数字の段は、この高さの中で各段を少し低くして収める
     val keyboardHeight = KeyHeight * KeyRows * scale
+    // 候補の一覧はバーの表示を見るので、ここで持つ。入力を始めるたびに先頭から表示する
+    val candidateListState = remember(state.composing) { LazyListState() }
     CompositionLocalProvider(LocalKeyHaptics provides state.vibrate, LocalKeyBorders provides state.keyBorders) {
         Column(
             modifier
@@ -115,14 +122,14 @@ fun KeyboardScreen(
                     modifier = Modifier.fillMaxWidth().height(barHeight),
                 )
             } else if (state.composing) {
-                CandidateBar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
+                CandidateBar(state, candidateListState, onAction, Modifier.fillMaxWidth().height(barHeight))
             } else if (state.followUps.isNotEmpty() && state.panel == Panel.None) {
                 FollowUpBar(state.followUps, onAction, Modifier.fillMaxWidth().height(barHeight))
             } else {
                 Toolbar(state, onAction, Modifier.fillMaxWidth().height(barHeight))
             }
             if (state.candidateListExpanded && state.composing) {
-                CandidateGrid(state, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
+                CandidateGrid(state, candidateListState, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             } else if (state.panel == Panel.Voice) {
                 VoicePanel(state.voice, onAction, Modifier.fillMaxWidth().height(keyboardHeight))
             } else if (state.panel == Panel.Clipboard) {
@@ -316,13 +323,19 @@ private fun ToolbarButton(
 /** 確定の後に、続けて打ちそうな語を出す。閉じるとツールバーに戻る。 */
 @Composable
 private fun FollowUpBar(followUps: List<String>, onAction: (KeyAction) -> Unit, modifier: Modifier) {
+    val listState = rememberLazyListState()
+    val revealOr = rememberRevealOr(listState)
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        LazyRow(Modifier.weight(1f).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+        LazyRow(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             itemsIndexed(followUps) { index, text ->
                 CandidateItem(
                     text = text,
                     selected = false,
-                    onClick = { onAction(KeyAction.SelectFollowUp(index)) },
+                    onClick = { revealOr(index) { onAction(KeyAction.SelectFollowUp(index)) } },
                     modifier = Modifier.fillMaxHeight(),
                 )
             }
@@ -332,8 +345,13 @@ private fun FollowUpBar(followUps: List<String>, onAction: (KeyAction) -> Unit, 
 }
 
 @Composable
-private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modifier: Modifier) {
-    val listState = rememberLazyListState()
+private fun CandidateBar(
+    state: KeyboardUiState,
+    listState: LazyListState,
+    onAction: (KeyAction) -> Unit,
+    modifier: Modifier,
+) {
+    val revealOr = rememberRevealOr(listState)
     LaunchedEffect(state.selectedCandidate) {
         if (state.selectedCandidate >= 0) listState.animateScrollToItem(state.selectedCandidate)
     }
@@ -350,7 +368,7 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
                 CandidateItem(
                     text = candidate,
                     selected = index == state.selectedCandidate,
-                    onClick = { onAction(KeyAction.SelectCandidate(index)) },
+                    onClick = { revealOr(index) { onAction(KeyAction.SelectCandidate(index)) } },
                     modifier = Modifier.fillMaxHeight(),
                 )
             }
@@ -368,17 +386,37 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit, 
     }
 }
 
+/**
+ * 候補の押下の処理を返す。端で切れている候補は確定せず、全体が見えるまでスクロールする。
+ * 何の候補か読めないまま確定しないようにするため。
+ */
+@Composable
+private fun rememberRevealOr(listState: LazyListState): (Int, () -> Unit) -> Unit {
+    val scope = rememberCoroutineScope()
+    val tolerance = with(LocalDensity.current) { (CANDIDATE_PADDING + CANDIDATE_MARGIN).roundToPx() }
+    return remember(listState, scope, tolerance) {
+        { index, select ->
+            val info = listState.layoutInfo
+            val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+            val overflow = item?.let {
+                clippedOverflow(it.offset, it.size, info.viewportStartOffset, info.viewportEndOffset, tolerance)
+            } ?: 0
+            if (overflow == 0) select() else scope.launch { listState.animateScrollBy(overflow.toFloat()) }
+        }
+    }
+}
+
 @Composable
 private fun CandidateItem(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Box(
         modifier
-            .padding(vertical = 4.dp, horizontal = 2.dp)
+            .padding(vertical = 4.dp, horizontal = CANDIDATE_MARGIN)
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) colors.secondaryContainer else colors.surfaceContainer)
             .clickable(onClick = onClick)
             .widthIn(min = 44.dp)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = CANDIDATE_PADDING),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -393,12 +431,28 @@ private fun CandidateItem(text: String, selected: Boolean, onClick: () -> Unit, 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CandidateGrid(state: KeyboardUiState, onAction: (KeyAction) -> Unit, modifier: Modifier) {
+private fun CandidateGrid(
+    state: KeyboardUiState,
+    barState: LazyListState,
+    onAction: (KeyAction) -> Unit,
+    modifier: Modifier,
+) {
+    // バーに全体が見えている候補は繰り返さない。バーのレイアウトに追従するので、スクロールや候補の更新でも候補が隠れたままにならない
+    val tolerance = with(LocalDensity.current) { (CANDIDATE_PADDING + CANDIDATE_MARGIN).roundToPx() }
+    val inBar by remember(barState, tolerance) {
+        derivedStateOf {
+            val info = barState.layoutInfo
+            info.visibleItemsInfo.filter {
+                isFullyVisible(it.offset, it.size, info.viewportStartOffset, info.viewportEndOffset, tolerance)
+            }.mapTo(HashSet()) { it.index }
+        }
+    }
     FlowRow(
         modifier.verticalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.Start,
     ) {
         state.candidates.forEachIndexed { index, candidate ->
+            if (index in inBar) return@forEachIndexed
             CandidateItem(
                 text = candidate,
                 selected = index == state.selectedCandidate,
@@ -408,6 +462,27 @@ private fun CandidateGrid(state: KeyboardUiState, onAction: (KeyAction) -> Unit,
         }
     }
 }
+
+private val CANDIDATE_PADDING = 12.dp
+private val CANDIDATE_MARGIN = 2.dp
+
+/**
+ * 候補が表示範囲からはみ出している量 (スクロールすべき量)。左にはみ出せば負、はみ出していなければ 0。
+ * 文字の左右の余白 ([tolerance]) だけが切れている場合は、文字が読めるので 0 とする。
+ */
+internal fun clippedOverflow(offset: Int, size: Int, viewportStart: Int, viewportEnd: Int, tolerance: Int): Int {
+    val end = offset + size
+    return when {
+        size >= viewportEnd - viewportStart -> 0
+        end - viewportEnd > tolerance -> end - viewportEnd
+        viewportStart - offset > tolerance -> offset - viewportStart
+        else -> 0
+    }
+}
+
+/** 候補の全体が表示範囲に収まっているか。表示範囲より広い候補は収まらない。 */
+internal fun isFullyVisible(offset: Int, size: Int, viewportStart: Int, viewportEnd: Int, tolerance: Int): Boolean =
+    size <= viewportEnd - viewportStart && clippedOverflow(offset, size, viewportStart, viewportEnd, tolerance) == 0
 
 @Preview(widthDp = 400)
 @Composable

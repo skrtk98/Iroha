@@ -26,6 +26,10 @@ class LearningStore(private val capacity: Int = 4000) : WordSource {
     @Volatile
     private var snapshot = Snapshot(emptyList(), emptyMap(), emptyMap(), 0)
 
+    /** 新しく覚えたときに呼ぶ。保存の予約に使う。 */
+    @Volatile
+    var onLearned: (() -> Unit)? = null
+
     /** 語ごとの学習。新しい順。 */
     val entries: List<WordEntry> get() = snapshot.learned.filter { it.previous == null }.map { it.entry }
 
@@ -48,6 +52,7 @@ class LearningStore(private val capacity: Int = 4000) : WordSource {
             }
         }
         replace(updated.take(capacity))
+        onLearned?.invoke()
     }
 
     /** 直前の文節が [previous] のときに、読み [reading] で選んだ語。 */

@@ -24,7 +24,7 @@ package io.github.skrtk98.iroha.engine.dict
  */
 internal object DictionaryFormat {
     const val MAGIC = 0x49524844 // "IRHD"
-    const val VERSION = 4
+    const val VERSION = 6
     const val HEADER_SIZE = 56
     const val BLOCK_SIZE = 16
     const val RESOLUTION = 64

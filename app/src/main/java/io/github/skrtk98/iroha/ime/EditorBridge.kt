@@ -22,6 +22,9 @@ interface EditorBridge {
     /** [block] の編集をまとめて行う。途中の状態が入力欄から通知されにくくなる。 */
     fun batchEdit(block: () -> Unit)
     fun finishComposing()
+
+    /** カーソルの前の [length] 文字。入力欄が答えなければ null。 */
+    fun textBeforeCursor(length: Int): CharSequence?
     fun deleteBackward()
     fun sendEnter()
     fun moveCursor(delta: Int)
@@ -79,6 +82,8 @@ class InputConnectionBridge(
     override fun finishComposing() {
         connection()?.finishComposingText()
     }
+
+    override fun textBeforeCursor(length: Int): CharSequence? = connection()?.getTextBeforeCursor(length, 0)
 
     override fun deleteBackward() {
         val ic = connection() ?: return
