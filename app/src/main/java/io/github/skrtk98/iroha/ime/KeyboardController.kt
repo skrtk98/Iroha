@@ -274,11 +274,11 @@ class KeyboardController(
         // かなの面でもシフト中の英字はローマ字にせず、大文字のまま確定する
         val shiftedLetter = shifted && text.length == 1 && text[0].lowercaseChar() in 'a'..'z'
         // かなの面から移った記号の面では、記号を全角で読みに入れる。変換すれば半角も選べる
-        // キーの印字も同じ state.widensSymbols で全角にしている
-        val fullWidth = if (s != null && state.widensSymbols) SymbolInput.fullWidth(text, charBeforeCursor(s)) else null
+        // キーの印字も同じ state.widensSymbols で全角にしている。辞書の読み込み中は全角のまま確定する
+        val fullWidth = if (state.widensSymbols) SymbolInput.fullWidth(text, charBeforeCursor(s)) else null
         if (s == null || directInput || (!kanaFace && fullWidth == null) || shiftedLetter) {
             commitAll()
-            editor.commitText(if (shifted) text.uppercase() else text)
+            editor.commitText(fullWidth ?: if (shifted) text.uppercase() else text)
             if (shifted) _state.update { it.copy(shift = it.shift.afterInput()) }
             return
         }
@@ -290,8 +290,8 @@ class KeyboardController(
     }
 
     /** カーソル直前の文字。未確定文字列があればその中の、無ければ入力欄の文字。 */
-    private fun charBeforeCursor(s: ComposingSession): Char? {
-        if (s.isComposing) {
+    private fun charBeforeCursor(s: ComposingSession?): Char? {
+        if (s != null && s.isComposing) {
             val preedit = s.preedit
             return preedit.text.getOrNull(preedit.caret - 1)
         }
