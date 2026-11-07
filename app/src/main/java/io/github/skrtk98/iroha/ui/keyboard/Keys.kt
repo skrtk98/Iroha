@@ -224,6 +224,7 @@ fun FlickKeyButton(
     onGuide: (FlickGuide?) -> Unit,
     rootCoordinates: () -> LayoutCoordinates?,
     modifier: Modifier = Modifier,
+    display: (String) -> String = { it },
     threshold: Dp = 24.dp,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -239,7 +240,7 @@ fun FlickKeyButton(
             .onGloballyPositioned { coordinates[0] = it }
             .clip(KeyShape)
             .background(KeyStyle.Character.container(pressed))
-            .semantics { contentDescription = key.label }
+            .semantics { contentDescription = display(key.label) }
             .pointerInput(key) {
                 val thresholdPx = threshold.toPx()
                 awaitEachGesture {
@@ -302,15 +303,16 @@ fun FlickKeyButton(
     ) {
         val color = KeyStyle.Character.content(pressed)
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val label = display(key.label)
             Text(
-                key.label,
+                label,
                 color = color,
-                fontSize = if (key.label.length > 2) 15.sp else 20.sp,
+                fontSize = if (label.length > 2) 15.sp else 20.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
             )
             // フリックで出せる文字を小さく添える（数字テンキーの記号など）
-            key.hint?.let { Text(it, color = color.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1) }
+            key.hint?.let { Text(display(it), color = color.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1) }
         }
     }
 }
@@ -324,9 +326,9 @@ private fun directionOf(delta: Offset, threshold: Float): FlickDirection {
     }
 }
 
-/** 押しているキーを中心に、各方向の文字を十字に並べたガイド。 */
+/** 押しているキーを中心に、各方向の文字を十字に並べたガイド。[display] はキーの印字と同じ見せ方。 */
 @Composable
-fun FlickGuideOverlay(guide: FlickGuide, modifier: Modifier = Modifier) {
+fun FlickGuideOverlay(guide: FlickGuide, modifier: Modifier = Modifier, display: (String) -> String = { it }) {
     val density = LocalDensity.current
     val w = with(density) { guide.width.toDp() }
     val h = with(density) { guide.height.toDp() }
@@ -335,7 +337,7 @@ fun FlickGuideOverlay(guide: FlickGuide, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Box(modifier) {
         for (direction in FlickDirection.entries) {
-            val text = guide.key.output(direction) ?: continue
+            val text = guide.key.output(direction)?.let(display) ?: continue
             val (dx, dy) = when (direction) {
                 FlickDirection.Center -> 0 to 0
                 FlickDirection.Left -> -1 to 0

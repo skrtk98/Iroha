@@ -12,6 +12,7 @@ import androidx.annotation.MainThread
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -116,10 +117,16 @@ class ClipboardRepository(
         history.clearUnpinned()
     }
 
+    /** 固定した項目も含めて履歴を消し、保存し終えるまで待つ。消した履歴を保存できたかを返す。 */
     @MainThread
-    fun clearAll() = mutate {
-        clearCount++
-        history.clearAll()
+    suspend fun clearAll(): Boolean {
+        val saving = mutate {
+            clearCount++
+            history.clearAll()
+        }
+        val version = publishCount
+        saving.join()
+        return savedVersion >= version
     }
 
     /** 他のアプリに渡すための、画像の項目の URI と MIME タイプ。 */
@@ -131,19 +138,19 @@ class ClipboardRepository(
         return FileProvider.getUriForFile(context, context.packageName + PROVIDER_SUFFIX, file) to mimeType
     }
 
-    private fun mutate(block: () -> Unit) {
+    private fun mutate(block: () -> Unit): Job {
         ensureLoaded()
         block()
-        publish()
+        return publish()
     }
 
-    /** 履歴から外れた画像のファイルを消し、履歴を保存する。 */
-    private fun publish() {
+    /** 履歴から外れた画像のファイルを消し、履歴を保存する。返す Job は保存を終えると完了する。 */
+    private fun publish(): Job {
         val removed = _entries.value.mapNotNullTo(HashSet()) { it.image } - history.entries.mapNotNullTo(HashSet()) { it.image }
         _entries.value = history.entries
         val snapshot = history.serialize()
         val version = ++publishCount
-        appScope.launch(Dispatchers.IO) {
+        return appScope.launch(Dispatchers.IO) {
             saveMutex.withLock {
                 // 保存の順は前後しうるので、新しい履歴を書いた後に古い履歴で上書きしない
                 if (version > savedVersion) {
