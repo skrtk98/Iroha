@@ -246,6 +246,9 @@ fun FlickKeyButton(
                     pressed = true
                     haptic()
                     var direction = FlickDirection.Center
+                    // タップだけならガイドは出さない。指が動き出すか、止めたまま待つと出す
+                    var guideShown = false
+                    var lastTime = down.uptimeMillis
                     fun publishGuide() {
                         val own = coordinates[0]
                         val root = currentRoot()
@@ -255,16 +258,30 @@ fun FlickKeyButton(
                             FlickGuide(key, origin, own.size.width.toFloat(), own.size.height.toFloat(), direction),
                         )
                     }
-                    publishGuide()
                     try {
                         while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            val next = directionOf(change.position - down.position, thresholdPx)
-                                .takeIf { key.output(it) != null } ?: FlickDirection.Center
-                            if (next != direction) {
-                                direction = next
+                            val event = if (guideShown) {
+                                awaitPointerEvent()
+                            } else {
+                                val remaining = GUIDE_DELAY_MS - (lastTime - down.uptimeMillis)
+                                withTimeoutOrNull(remaining.coerceAtLeast(0L)) { awaitPointerEvent() }
+                            }
+                            if (event == null) {
+                                guideShown = true
                                 publishGuide()
+                                continue
+                            }
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            lastTime = change.uptimeMillis
+                            val delta = change.position - down.position
+                            val next = directionOf(delta, thresholdPx)
+                                .takeIf { key.output(it) != null } ?: FlickDirection.Center
+                            val showNow = !guideShown && change.pressed &&
+                                delta.getDistance() > viewConfiguration.touchSlop
+                            if (showNow) guideShown = true
+                            if (next != direction || showNow) {
+                                direction = next
+                                if (guideShown) publishGuide()
                             }
                             change.consume()
                             if (!change.pressed) {
@@ -344,5 +361,7 @@ fun FlickGuideOverlay(guide: FlickGuide, modifier: Modifier = Modifier) {
     }
 }
 
+/** 指を止めたままフリックのガイドを出すまでの時間。 */
+private const val GUIDE_DELAY_MS = 300L
 private const val REPEAT_START_MS = 400L
 private const val REPEAT_INTERVAL_MS = 50L
