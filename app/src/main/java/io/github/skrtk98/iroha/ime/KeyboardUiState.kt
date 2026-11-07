@@ -58,6 +58,8 @@ data class KeyboardUiState(
     val resizing: Boolean = false,
     val keyBorders: Boolean = true,
     val qwertyNumberRow: Boolean = false,
+    /** かなの面から移った数字・記号の面で記号を全角にするか（設定がオンで、そのまま確定する欄でない）。 */
+    val fullWidthSymbols: Boolean = false,
     val vibrate: Boolean = true,
     val loading: Boolean = false,
     val panel: Panel = Panel.None,
@@ -67,4 +69,7 @@ data class KeyboardUiState(
     val voice: VoiceUiState = VoiceUiState(),
 ) {
     val shifted get() = shift != ShiftState.Off
+
+    /** いま表示している記号の面で、記号を全角で打つか。 */
+    val widensSymbols get() = fullWidthSymbols && Faces.isSymbol(face) && !Faces.isAlphabet(textFace)
 }

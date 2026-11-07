@@ -15,5 +15,8 @@ object SymbolInput {
         return Kana.toFullWidth(text)
     }
 
+    /** 記号を全角で打つ面でのキーの印字。打つ文字は変えず、数字はそのまま、記号は全角で見せる。 */
+    fun label(text: String): String = if (text.any { it in '0'..'9' }) text else Kana.toFullWidth(text)
+
     private const val NUMBER_JOINERS = ".,:/-+*^%=<>~"
 }

@@ -23,6 +23,7 @@ import io.github.skrtk98.iroha.ime.KeyAction
 import io.github.skrtk98.iroha.ime.KeyboardFace
 import io.github.skrtk98.iroha.ime.ShiftState
 import io.github.skrtk98.iroha.ime.SpaceKind
+import io.github.skrtk98.iroha.ime.SymbolInput
 
 @Composable
 fun BackspaceKey(onAction: (KeyAction) -> Unit, modifier: Modifier = Modifier) {
@@ -75,7 +76,9 @@ fun FlickKeyboard(
     spaceKind: SpaceKind,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
+    widenSymbols: Boolean = false,
 ) {
+    val display = symbolDisplay(widenSymbols)
     val keys = when (face) {
         KeyboardFace.FlickAlphabet -> KeyLayouts.flickAlphabet
         KeyboardFace.FlickNumber -> KeyLayouts.flickNumber
@@ -123,6 +126,7 @@ fun FlickKeyboard(
                                     onGuide = { guide = it },
                                     rootCoordinates = { root[0] },
                                     modifier = cellModifier,
+                                    display = display,
                                 )
                             }
                         }
@@ -135,7 +139,7 @@ fun FlickKeyboard(
                 EnterKey(enterKind, composing, onAction, Modifier.weight(2f).fillMaxWidth())
             }
         }
-        guide?.let { FlickGuideOverlay(it, Modifier.matchParentSize()) }
+        guide?.let { FlickGuideOverlay(it, Modifier.matchParentSize(), display) }
     }
 }
 
@@ -194,8 +198,10 @@ fun QwertyKeyboard(
     moreSymbols: Boolean,
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
+    widenSymbols: Boolean = false,
 ) {
     val symbols = face == KeyboardFace.QwertySymbols
+    val display = symbolDisplay(widenSymbols)
     val rows: List<List<String>> = if (symbols) {
         if (moreSymbols) KeyLayouts.moreSymbolRows else KeyLayouts.symbolRows
     } else {
@@ -207,12 +213,12 @@ fun QwertyKeyboard(
         if (numberRow && !symbols) {
             Row(Modifier.fillMaxWidth().weight(QwertyNumberRowWeight)) { CharacterKeys(KeyLayouts.symbolRows[0], onAction) }
         }
-        Row(rowModifier) { CharacterKeys(rows[0], onAction) }
+        Row(rowModifier) { CharacterKeys(rows[0], onAction, display) }
         val kana = face == KeyboardFace.QwertyKana
         Row(rowModifier) {
             if (symbols) {
                 Spacer(Modifier.weight(0.5f))
-                CharacterKeys(rows[1], onAction)
+                CharacterKeys(rows[1], onAction, display)
                 Spacer(Modifier.weight(0.5f))
             } else {
                 // 日英の面は長音・ハイフンを l の右に置き、下段を句読点と ！？ に空ける
@@ -232,7 +238,7 @@ fun QwertyKeyboard(
             } else {
                 ShiftKey(shift, onAction, Modifier.weight(1.5f).fillMaxHeight())
             }
-            CharacterKeys(rows[2], onAction)
+            CharacterKeys(rows[2], onAction, display)
             BackspaceKey(onAction, Modifier.weight(1.5f).fillMaxHeight())
         }
         Row(rowModifier) {
@@ -249,27 +255,30 @@ fun QwertyKeyboard(
                 symbols -> listOf(",") to listOf(".")
                 else -> punctuation.left to punctuation.right
             }
-            PunctuationKeys(left, onAction)
+            PunctuationKeys(left, onAction, display)
             SpaceKey(spaceKind, onAction, Modifier.weight(if (symbols) 6.2f else 4.4f).fillMaxHeight())
-            PunctuationKeys(right, onAction)
+            PunctuationKeys(right, onAction, display)
             EnterKey(enterKind, composing, onAction, Modifier.weight(1.5f).fillMaxHeight())
         }
     }
 }
 
 @Composable
-private fun RowScope.PunctuationKeys(keys: List<String>, onAction: (KeyAction) -> Unit) {
+private fun RowScope.PunctuationKeys(keys: List<String>, onAction: (KeyAction) -> Unit, display: (String) -> String = { it }) {
     for (key in keys) {
-        TextKey(key, { onAction(KeyAction.Text(key)) }, Modifier.weight(0.9f).fillMaxHeight())
+        TextKey(display(key), { onAction(KeyAction.Text(key)) }, Modifier.weight(0.9f).fillMaxHeight())
     }
 }
 
 @Composable
-private fun RowScope.CharacterKeys(keys: List<String>, onAction: (KeyAction) -> Unit) {
+private fun RowScope.CharacterKeys(keys: List<String>, onAction: (KeyAction) -> Unit, display: (String) -> String = { it }) {
     for (key in keys) {
-        TextKey(key, { onAction(KeyAction.Text(key)) }, Modifier.weight(1f).fillMaxHeight())
+        TextKey(display(key), { onAction(KeyAction.Text(key)) }, Modifier.weight(1f).fillMaxHeight())
     }
 }
+
+/** キーの印字の見せ方。記号を全角で打つ面では全角で見せ、打つ文字は変えない。 */
+private fun symbolDisplay(widen: Boolean): (String) -> String = if (widen) SymbolInput::label else { text -> text }
 
 /** 数字・記号の面から日英に戻るキーのラベル。戻り先の面を表す。 */
 private fun textFaceLabel(textFace: KeyboardFace) = when (textFace) {

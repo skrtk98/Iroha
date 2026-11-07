@@ -30,4 +30,13 @@ class SymbolInputTest {
         assertEquals("）", SymbolInput.fullWidth(")", before = '1'))
         assertEquals("＂", SymbolInput.fullWidth("\"", before = '1'))
     }
+
+    @Test
+    fun labelsShowSymbolsFullWidthAndKeepDigits() {
+        assertEquals("：", SymbolInput.label(":"))
+        assertEquals("（）［］", SymbolInput.label("()[]"))
+        assertEquals("￥", SymbolInput.label("¥"))
+        // 数字のキーの印字は変えない
+        assertEquals("1", SymbolInput.label("1"))
+    }
 }
