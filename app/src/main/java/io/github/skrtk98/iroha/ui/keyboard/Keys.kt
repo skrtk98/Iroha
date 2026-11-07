@@ -1,5 +1,6 @@
 package io.github.skrtk98.iroha.ui.keyboard
 
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
@@ -248,7 +249,8 @@ fun FlickKeyButton(
                     var direction = FlickDirection.Center
                     // タップだけならガイドは出さない。指が動き出すか、止めたまま待つと出す
                     var guideShown = false
-                    var lastTime = down.uptimeMillis
+                    // イベントの時刻は SystemClock.uptimeMillis と同じ基準。配送の遅れも待ち時間に含める
+                    val guideAt = down.uptimeMillis + GUIDE_DELAY_MS
                     fun publishGuide() {
                         val own = coordinates[0]
                         val root = currentRoot()
@@ -260,19 +262,19 @@ fun FlickKeyButton(
                     }
                     try {
                         while (true) {
+                            val remaining = guideAt - SystemClock.uptimeMillis()
+                            if (!guideShown && remaining <= 0L) {
+                                guideShown = true
+                                publishGuide()
+                            }
                             val event = if (guideShown) {
                                 awaitPointerEvent()
                             } else {
-                                val remaining = GUIDE_DELAY_MS - (lastTime - down.uptimeMillis)
-                                withTimeoutOrNull(remaining.coerceAtLeast(0L)) { awaitPointerEvent() }
-                            }
-                            if (event == null) {
-                                guideShown = true
-                                publishGuide()
-                                continue
+                                withTimeoutOrNull(remaining) { awaitPointerEvent() } ?: continue
                             }
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            lastTime = change.uptimeMillis
+                            // 取り消し（ACTION_CANCEL）は消費済みの離す操作として届く。文字は入れない
+                            val cancelled = !change.pressed && change.isConsumed
                             val delta = change.position - down.position
                             val next = directionOf(delta, thresholdPx)
                                 .takeIf { key.output(it) != null } ?: FlickDirection.Center
@@ -285,13 +287,14 @@ fun FlickKeyButton(
                             }
                             change.consume()
                             if (!change.pressed) {
-                                key.output(direction)?.let(currentOnInput)
+                                if (!cancelled) key.output(direction)?.let(currentOnInput)
                                 break
                             }
                         }
                     } finally {
                         pressed = false
-                        currentOnGuide(null)
+                        // ガイドを出していないキーは、ほかの指で押しているキーのガイドを消さない
+                        if (guideShown) currentOnGuide(null)
                     }
                 }
             },
