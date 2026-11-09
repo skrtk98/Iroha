@@ -29,6 +29,20 @@ class InputFieldsTest {
     }
 
     @Test
+    fun enterKeyShowsWhatItDoes() {
+        // Google アプリの検索欄（複数行・検索の動作）
+        assertEquals(EnterKind.Search, InputFields.enterKind(0x10000003))
+        assertEquals(EditorInfo.IME_ACTION_SEARCH, InputFields.enterAction(0x10000003))
+        // 表示を用意していない動作は、改行と表示して改行する
+        assertEquals(EnterKind.Newline, InputFields.enterKind(EditorInfo.IME_ACTION_PREVIOUS))
+        assertNull(InputFields.enterAction(EditorInfo.IME_ACTION_PREVIOUS))
+        for (action in 0..7) {
+            val shownAsAction = InputFields.enterKind(action) != EnterKind.Newline
+            assertEquals(shownAsAction, InputFields.enterAction(action) != null)
+        }
+    }
+
+    @Test
     fun uriFieldsStartInJapanese() {
         // Chrome のアドレスバー（URI・候補なし）
         val omnibox = text or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS

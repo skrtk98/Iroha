@@ -33,8 +33,20 @@ object InputFields {
     fun enterAction(imeOptions: Int): Int? {
         if (imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0) return null
         val action = imeOptions and EditorInfo.IME_MASK_ACTION
-        return action.takeUnless { it == EditorInfo.IME_ACTION_UNSPECIFIED || it == EditorInfo.IME_ACTION_NONE }
+        return action.takeIf { it in ENTER_KINDS }
     }
+
+    /** Enter キーの表示。[enterAction] と同じ判定から決め、表示と動作を食い違わせない。 */
+    fun enterKind(imeOptions: Int): EnterKind = enterAction(imeOptions)?.let(ENTER_KINDS::getValue) ?: EnterKind.Newline
+
+    /** キーに表示を用意してある動作。前の欄へ戻る動作などは表示がないので改行として扱う。 */
+    private val ENTER_KINDS = mapOf(
+        EditorInfo.IME_ACTION_GO to EnterKind.Go,
+        EditorInfo.IME_ACTION_SEARCH to EnterKind.Search,
+        EditorInfo.IME_ACTION_SEND to EnterKind.Send,
+        EditorInfo.IME_ACTION_NEXT to EnterKind.Next,
+        EditorInfo.IME_ACTION_DONE to EnterKind.Done,
+    )
 
     /** Enter で改行の文字を入れる、複数行の欄。 */
     fun entersNewlineAsText(inputType: Int): Boolean =

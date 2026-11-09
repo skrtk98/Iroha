@@ -573,17 +573,8 @@ class KeyboardController(
         }
     }
 
-    private fun enterKindOf(info: EditorInfo?): EnterKind {
-        if (info == null) return EnterKind.Newline
-        return when (InputFields.enterAction(info.imeOptions)) {
-            EditorInfo.IME_ACTION_GO -> EnterKind.Go
-            EditorInfo.IME_ACTION_SEARCH -> EnterKind.Search
-            EditorInfo.IME_ACTION_SEND -> EnterKind.Send
-            EditorInfo.IME_ACTION_NEXT -> EnterKind.Next
-            EditorInfo.IME_ACTION_DONE -> EnterKind.Done
-            else -> EnterKind.Newline
-        }
-    }
+    private fun enterKindOf(info: EditorInfo?): EnterKind =
+        if (info == null) EnterKind.Newline else InputFields.enterKind(info.imeOptions)
 }
 
 /** 続きの候補を引くときに見る、直前に確定した文字列の長さ。 */
