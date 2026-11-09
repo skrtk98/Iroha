@@ -25,6 +25,17 @@ object InputFields {
             isText(inputType) && variationOf(inputType) in EMAIL_VARIATIONS ||
             imeOptions and EditorInfo.IME_FLAG_FORCE_ASCII != 0
 
+    /**
+     * Enter キーで実行する欄の動作（検索・送信など）。null なら改行する。
+     * 複数行の欄でも、アプリが動作を指定して改行を求めていなければ動作を優先する（Google アプリの検索欄など）。
+     * TextView は複数行の欄に [EditorInfo.IME_FLAG_NO_ENTER_ACTION] を自動で付けるので、ふつうのメモ欄は改行のまま。
+     */
+    fun enterAction(imeOptions: Int): Int? {
+        if (imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0) return null
+        val action = imeOptions and EditorInfo.IME_MASK_ACTION
+        return action.takeUnless { it == EditorInfo.IME_ACTION_UNSPECIFIED || it == EditorInfo.IME_ACTION_NONE }
+    }
+
     /** Enter で改行の文字を入れる、複数行の欄。 */
     fun entersNewlineAsText(inputType: Int): Boolean =
         isText(inputType) && inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0

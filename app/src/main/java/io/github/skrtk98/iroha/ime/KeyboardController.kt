@@ -575,9 +575,7 @@ class KeyboardController(
 
     private fun enterKindOf(info: EditorInfo?): EnterKind {
         if (info == null) return EnterKind.Newline
-        if (info.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0) return EnterKind.Newline
-        if (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0) return EnterKind.Newline
-        return when (info.imeOptions and EditorInfo.IME_MASK_ACTION) {
+        return when (InputFields.enterAction(info.imeOptions)) {
             EditorInfo.IME_ACTION_GO -> EnterKind.Go
             EditorInfo.IME_ACTION_SEARCH -> EnterKind.Search
             EditorInfo.IME_ACTION_SEND -> EnterKind.Send

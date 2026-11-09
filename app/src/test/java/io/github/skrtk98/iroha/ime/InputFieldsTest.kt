@@ -2,7 +2,9 @@ package io.github.skrtk98.iroha.ime
 
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,6 +17,15 @@ class InputFieldsTest {
         assertFalse(InputFields.entersNewlineAsText(text))
         // 文字の欄でなければ、同じビットが立っていても改行の文字は入れない
         assertFalse(InputFields.entersNewlineAsText(InputType.TYPE_CLASS_NUMBER or InputType.TYPE_TEXT_FLAG_MULTI_LINE))
+    }
+
+    @Test
+    fun enterRunsTheFieldActionUnlessNewlineIsRequested() {
+        assertEquals(EditorInfo.IME_ACTION_SEARCH, InputFields.enterAction(EditorInfo.IME_ACTION_SEARCH))
+        // TextView の複数行の欄は動作を指定していても改行を求める
+        assertNull(InputFields.enterAction(EditorInfo.IME_ACTION_SEND or EditorInfo.IME_FLAG_NO_ENTER_ACTION))
+        assertNull(InputFields.enterAction(EditorInfo.IME_ACTION_UNSPECIFIED))
+        assertNull(InputFields.enterAction(EditorInfo.IME_ACTION_NONE))
     }
 
     @Test
