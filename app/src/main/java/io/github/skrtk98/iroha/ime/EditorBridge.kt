@@ -98,15 +98,12 @@ class InputConnectionBridge(
     override fun sendEnter() {
         val ic = connection() ?: return
         val info = editorInfo()
-        val action = info?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_UNSPECIFIED
-        val noEnterAction = (info?.imeOptions ?: 0) and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
-        val inputType = info?.inputType ?: 0
-        val multiLine = inputType and android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
-        // チャットのアプリには Enter キーの押下を送信として扱うものがあるので、複数行の欄では改行の文字を入れる
-        if (InputFields.entersNewlineAsText(inputType)) {
-            ic.commitText("\n", 1)
-        } else if (!noEnterAction && !multiLine && action != EditorInfo.IME_ACTION_UNSPECIFIED && action != EditorInfo.IME_ACTION_NONE) {
+        val action = InputFields.enterAction(info?.imeOptions ?: 0)
+        if (action != null) {
             ic.performEditorAction(action)
+        } else if (InputFields.entersNewlineAsText(info?.inputType ?: 0)) {
+            // チャットのアプリには Enter キーの押下を送信として扱うものがあるので、複数行の欄では改行の文字を入れる
+            ic.commitText("\n", 1)
         } else {
             sendKey(ic, KeyEvent.KEYCODE_ENTER)
         }
