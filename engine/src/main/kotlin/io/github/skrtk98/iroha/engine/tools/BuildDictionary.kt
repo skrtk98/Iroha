@@ -2,6 +2,7 @@ package io.github.skrtk98.iroha.engine.tools
 
 import io.github.skrtk98.iroha.engine.dict.DictionaryBuilder
 import io.github.skrtk98.iroha.engine.dict.MozcImporter
+import io.github.skrtk98.iroha.engine.dict.SpecialTable
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
@@ -12,18 +13,19 @@ import kotlin.system.exitProcess
 /**
  * ビルド時に mozc の辞書から iroha.dic を作るコマンド。
  *
- * 使い方: BuildDictionary <mozc キャッシュディレクトリ> <出力ファイル> <自立語の最大コスト>
+ * 使い方: BuildDictionary <mozc キャッシュディレクトリ> <出力ファイル> <自立語の最大コスト> <Iroha の独自候補 (special.tsv)>
  * キャッシュに無いファイルは固定リビジョンから取得する。キャッシュ済みのものも含め、
  * すべて SHA-256 を照合してから使う。
  */
 fun main(args: Array<String>) {
-    if (args.size != 3) {
-        System.err.println("usage: BuildDictionary <mozc-cache-dir> <output> <max-content-cost>")
+    if (args.size != 4) {
+        System.err.println("usage: BuildDictionary <mozc-cache-dir> <output> <max-content-cost> <special-table>")
         exitProcess(2)
     }
     val cacheDir = File(args[0], MozcImporter.MOZC_COMMIT)
     val output = File(args[1])
     val maxCost = args[2].toInt()
+    val specialTable = File(args[3])
 
     cacheDir.mkdirs()
     for (name in MozcImporter.REQUIRED_FILES) {
@@ -51,7 +53,8 @@ fun main(args: Array<String>) {
 
     val importer = MozcImporter(cacheDir)
     val words = importer.readEntries(maxCost).filterNot { hasHentaigana(it.surface) }
-    val entries = words + importer.predictionTable(words) + importer.readExtras().filterNot { hasHentaigana(it.surface) }
+    val special = SpecialTable.parse(specialTable.readLines(Charsets.UTF_8), importer.unknownNounId, importer.symbolId)
+    val entries = words + importer.predictionTable(words) + importer.readExtras().filterNot { hasHentaigana(it.surface) } + special
     val (matrix, dim) = importer.readMatrix()
     output.parentFile?.mkdirs()
     output.outputStream().use { out ->
