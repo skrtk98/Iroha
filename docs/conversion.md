@@ -106,6 +106,9 @@ MS IME の文字誤り率は、3.3MB のモデル（数字の表記の修正の�
 - **mozc の未使用データの取り込み**：`aux_dictionary`・`dictionary_manual`・`dictionary_filter`、`segmenter.def`・`boundary.def`、
   `single_kanji`、`symbol`、`emoji`（端末のフォントで出せないものは除く）、`emoticon`、`reading_correction`、`suffix`、`collocation`、
   `suggestion_filter`、`zero_query`（確定後の続きの候補）。
+  - mozc の記号は候補の 4 番目以降に付き、予測では後ろのほうになる。よく使う記号（かっこ →（）「」｛｝）と、
+    mozc にはカタカナしか無い英字の固有名詞（ぱいそん → Python）は、Iroha が `engine/data/special.tsv` に用意し、
+    読みに完全に一致したとき予測でも変換でも先頭の候補のすぐ後に出す（`ExtraKind.Special`）。表は手で書いたもので、mozc 由来ではない。
   - 取り込まなかったもの：`variant_rule`（旧字体の注釈で、説明を出す画面が無い）、`collocation_suppression`（中身がダミー）、
     `rules` のその他（mozc の内部用）、`preedit`・`keymap`・`typing`（入力方式や PC 用。`typing` は打ち間違いの補正で、将来の候補）。
   - レビューで「文節の境目のコストを変換範囲の途中の境目にも足すべき」と指摘されたが、測ると件数は変わらず

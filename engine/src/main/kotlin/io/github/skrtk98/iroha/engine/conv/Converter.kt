@@ -186,9 +186,11 @@ class Converter(
             if (ranked.size >= DICTIONARY_CANDIDATES) break
             ranked.putIfAbsent(candidate.surface, candidate)
         }
-        // 辞書の上位の後に記号と絵文字を挟み、顔文字と単漢字は辞書の候補の後ろに付ける
+        // Iroha の独自候補は先頭の候補のすぐ後に、辞書の上位の後に記号と絵文字を挟み、顔文字と単漢字は辞書の候補の後ろに付ける
         val dictionaryCandidates = withNumberVariants(ranked.values, segmentReading)
-        val ordered = dictionaryCandidates.take(CANDIDATES_BEFORE_SYMBOLS) +
+        val ordered = dictionaryCandidates.take(1) +
+            extraCandidates(ExtraKind.Special, segmentReading) +
+            dictionaryCandidates.subList(minOf(1, dictionaryCandidates.size), minOf(CANDIDATES_BEFORE_SYMBOLS, dictionaryCandidates.size)) +
             extraCandidates(ExtraKind.Symbol, segmentReading) +
             extraCandidates(ExtraKind.Emoji, segmentReading) +
             dictionaryCandidates.drop(CANDIDATES_BEFORE_SYMBOLS) +
@@ -447,6 +449,8 @@ class Converter(
                 ),
             )
         }
+        // 記号や英字の固有名詞は、ふつうの変換結果の次に出す (かっこ →（）、ぱいそん → Python)
+        extraCandidates(ExtraKind.Special, reading).forEach(::add)
         wholeAlternatives(reading, WHOLE_ALTERNATIVES).forEach(::add)
         // 読み全体の語が多い読み (こう、かん) でも、長い語の予測が出るように枠を残す
         val allRoom = room

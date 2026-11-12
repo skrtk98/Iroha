@@ -16,6 +16,8 @@ dependencies {
 val dictionaryMaxCost = providers.gradleProperty("iroha.dictionary.maxCost").orElse("8500")
 val dictionaryFile = layout.buildDirectory.file("dictionary/iroha.dic")
 val mozcCacheDir = rootProject.layout.projectDirectory.dir(".mozc").asFile.absolutePath
+// Iroha が独自に用意する記号と英字の固有名詞
+val specialTableFile = layout.projectDirectory.file("data/special.tsv")
 
 val buildDictionary = tasks.register<JavaExec>("buildDictionary") {
     description = "Builds iroha.dic from the mozc OSS dictionary."
@@ -23,8 +25,9 @@ val buildDictionary = tasks.register<JavaExec>("buildDictionary") {
     mainClass.set("io.github.skrtk98.iroha.engine.tools.BuildDictionaryKt")
     maxHeapSize = "3g"
     inputs.property("maxCost", dictionaryMaxCost)
+    inputs.file(specialTableFile)
     outputs.file(dictionaryFile)
-    args(mozcCacheDir, dictionaryFile.get().asFile.absolutePath, dictionaryMaxCost.get())
+    args(mozcCacheDir, dictionaryFile.get().asFile.absolutePath, dictionaryMaxCost.get(), specialTableFile.asFile.absolutePath)
 }
 
 // 文字の並びの言語モデル。コーパスは固定版を取得できないため、作ったモデルをリポジトリに置く。

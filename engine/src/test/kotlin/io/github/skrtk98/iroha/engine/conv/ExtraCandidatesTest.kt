@@ -29,6 +29,18 @@ class ExtraCandidatesTest {
     }
 
     @Test
+    fun specialCandidatesFollowTheFirstCandidate() {
+        // 予測（入力中の候補）でも変換でも、先頭の候補の次に並べる
+        for (list in listOf(candidates("かっこ"), converter.suggest("かっこ").map { it.surface })) {
+            assertEquals(list.toString(), listOf("（）", "「」", "｛｝"), list.subList(1, 4))
+        }
+        assertEquals("Python", converter.suggest("ぱいそん")[1].surface)
+        assertEquals("Markdown", candidates("まーくだうん")[1])
+        assertEquals("◯", candidates("まる")[1])
+        assertEquals(listOf("□", "■"), converter.suggest("しかく").map { it.surface }.subList(1, 3))
+    }
+
+    @Test
     fun emojiAndEmoticonsAreCandidates() {
         assertTrue("🐱" in candidates("ねこ"))
         assertTrue("(^o^)" in candidates("にこにこ"))
