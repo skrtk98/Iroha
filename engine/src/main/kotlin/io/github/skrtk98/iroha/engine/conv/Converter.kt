@@ -125,7 +125,19 @@ class Converter(
     fun convert(reading: String, leftRid: Int = BOS_EOS, leftContext: String = ""): List<Segment> {
         if (reading.isEmpty()) return emptyList()
         val path = bestPath(reading, 0, reading.length, leftRid, BOS_EOS, sentenceContext(leftContext))
-        return applyCollocations(reading, splitSegments(reading, path), leftRid).map(::preferKanjiNumber)
+        return joinSpecialWord(reading, applyCollocations(reading, splitSegments(reading, path), leftRid).map(::preferKanjiNumber))
+    }
+
+    /**
+     * 英字の固有名詞 ([ExtraKind.Special]) が読み全体に一致するのに文節が分かれたら、1 つの文節にまとめる。
+     * 候補は文節ごとに求めるので、分かれたままでは読み全体の語を選べない (たいぷ｜すくりぷと → TypeScript)。
+     */
+    private fun joinSpecialWord(reading: String, segments: List<Segment>): List<Segment> {
+        if (segments.size < 2) return segments
+        if (dictionary.extras(ExtraKind.Special, reading).none { word -> word.surface.any(Char::isLetterOrDigit) }) return segments
+        val tops = segments.map { it.candidates.first() }
+        val joined = Candidate(tops.joinToString("") { it.surface }, reading, tops.sumOf { it.cost }, tops.first().lid, tops.last().rid)
+        return listOf(Segment(reading, listOf(joined)))
     }
 
     /**
@@ -449,8 +461,10 @@ class Converter(
                 ),
             )
         }
-        // 記号や英字の固有名詞は、ふつうの変換結果の次に出す (かっこ →（）、ぱいそん → Python)
-        extraCandidates(ExtraKind.Special, reading).forEach(::add)
+        // 記号や英字の固有名詞は、ふつうの変換結果の次に出す (かっこ →（）、ぱいそん → Python)。
+        // 多い読み (かっこ) が予測の枠を使い切らないよう、残りは記号と一緒に後ろに出す
+        val specials = extraCandidates(ExtraKind.Special, reading)
+        specials.take(SPECIAL_SLOTS).forEach(::add)
         wholeAlternatives(reading, WHOLE_ALTERNATIVES).forEach(::add)
         // 読み全体の語が多い読み (こう、かん) でも、長い語の予測が出るように枠を残す
         val allRoom = room
@@ -470,6 +484,7 @@ class Converter(
         val suffixes = ArrayList<WordEntry>()
         dictionary.predictExtras(ExtraKind.Suffix, reading, PREDICT_SCAN_SHORT) { suffixes.add(it) }
         suffixes.sortedBy { it.cost }.take(SUFFIX_LIMIT).forEach { add(it.toCandidate()) }
+        specials.forEach(::add)
         extraCandidates(ExtraKind.Symbol, reading).forEach(::add)
         extraCandidates(ExtraKind.Emoji, reading).forEach(::add)
 
@@ -724,6 +739,9 @@ class Converter(
         /** 文節の候補で、記号・絵文字より前に置く辞書の候補の数。 */
         private const val CANDIDATES_BEFORE_SYMBOLS = 3
         private const val SUFFIX_LIMIT = 5
+
+        /** 予測で、先頭の候補のすぐ後に出す Iroha の独自候補の数。 */
+        private const val SPECIAL_SLOTS = 3
 
         /** 予測候補に出す、全文の変換の案の数。 */
         private const val WHOLE_ALTERNATIVES = 4

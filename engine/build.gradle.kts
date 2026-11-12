@@ -66,6 +66,9 @@ tasks.test {
     // 実辞書を使う結合テストのため
     dependsOn(buildDictionary)
     systemProperty("iroha.dictionary", dictionaryFile.get().asFile.absolutePath)
+    // 辞書や独自候補の表だけを変えたときも、テストを流し直す
+    inputs.file(dictionaryFile)
+    inputs.file(specialTableFile)
     systemProperty("iroha.mozcDir", mozcCacheDir)
     systemProperty("iroha.languageModel", languageModelFile.asFile.absolutePath)
     inputs.file(languageModelFile)

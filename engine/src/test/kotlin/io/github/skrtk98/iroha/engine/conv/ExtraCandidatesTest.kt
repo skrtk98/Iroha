@@ -41,6 +41,22 @@ class ExtraCandidatesTest {
     }
 
     @Test
+    fun specialWordsSurviveSegmentation() {
+        // 文節に分かれやすい長い語も、変換すると 1 つの文節になり、候補から選べる
+        for ((reading, word) in listOf("たいぷすくりぷと" to "TypeScript", "おーぷんえーあい" to "OpenAI")) {
+            val segments = converter.convert(reading)
+            assertEquals(segments.toString(), 1, segments.size)
+            assertTrue(candidates(reading).toString(), word in candidates(reading).take(3))
+        }
+    }
+
+    @Test
+    fun specialCandidatesLeaveRoomForPredictions() {
+        val list = converter.suggest("かっこ", limit = 20).map { it.surface }
+        assertTrue(list.toString(), list.any { it.length > 3 && (it.startsWith("かっこ") || it.startsWith("カッコ")) })
+    }
+
+    @Test
     fun emojiAndEmoticonsAreCandidates() {
         assertTrue("🐱" in candidates("ねこ"))
         assertTrue("(^o^)" in candidates("にこにこ"))
