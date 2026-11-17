@@ -27,4 +27,11 @@ object Faces {
 
     /** 日英の面 [textFace] と同じ配列で、かな ⇔ 英字を入れ替えた面。 */
     fun otherLanguage(textFace: KeyboardFace): KeyboardFace = text(layoutOf(textFace), alphabet = !isAlphabet(textFace))
+
+    /**
+     * 日英ボタンを押した後に出す面。数字・記号の面ではその面にとどまり、日英（記号の全角・半角と戻り先）だけを変える。
+     * 記号を続けて打つ途中で全角・半角を変えられるようにするため。
+     */
+    fun afterLanguageToggle(face: KeyboardFace, textFace: KeyboardFace): KeyboardFace =
+        if (isSymbol(face)) face else otherLanguage(textFace)
 }

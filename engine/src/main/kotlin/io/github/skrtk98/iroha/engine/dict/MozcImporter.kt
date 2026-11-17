@@ -34,6 +34,9 @@ class MozcImporter(private val dir: File) {
         }
     }
 
+    /** 「記号,一般」の ID。 */
+    val symbolId: Int by lazy { posId("記号,一般,") }
+
     private fun posId(prefix: String): Int =
         posNames.indexOfFirst { it.startsWith(prefix) }.also { check(it >= 0) { "no POS $prefix" } }
 
@@ -159,7 +162,6 @@ class MozcImporter(private val dir: File) {
     fun readExtras(): List<WordEntry> {
         val main = mainDictionary
         val result = ArrayList<WordEntry>()
-        val symbolId = posId("記号,一般,")
         var order = 0
         fun add(kind: ExtraKind, reading: String, surface: String, lid: Int = symbolId, rid: Int = lid, cost: Int = order++) {
             if (reading.isEmpty() || surface.isEmpty() || reading.length >= SystemDictionary.MAX_READING_CHARS) return

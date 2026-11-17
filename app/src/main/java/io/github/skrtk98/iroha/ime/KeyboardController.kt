@@ -212,7 +212,7 @@ class KeyboardController(
             KeyAction.Shift -> _state.update { it.copy(shift = it.shift.tap()) }
             KeyAction.LockShift -> _state.update { it.copy(shift = ShiftState.Locked) }
             KeyAction.ToggleMoreSymbols -> _state.update { it.copy(moreSymbols = !it.moreSymbols) }
-            KeyAction.ToggleKanaAlphabet -> switchFace(Faces.otherLanguage(_state.value.textFace))
+            KeyAction.ToggleKanaAlphabet -> toggleLanguage()
             KeyAction.ToggleSymbols -> {
                 val state = _state.value
                 switchFace(if (Faces.isSymbol(state.face)) state.textFace else Faces.symbol(settings.symbolLayout))
@@ -416,6 +416,15 @@ class KeyboardController(
         _state.update {
             it.copy(face = face, textFace = if (Faces.isSymbol(face)) it.textFace else face, shift = ShiftState.Off, moreSymbols = false)
         }
+    }
+
+    private fun toggleLanguage() {
+        val state = _state.value
+        val face = Faces.afterLanguageToggle(state.face, state.textFace)
+        if (face != state.face) return switchFace(face)
+        // 数字・記号の面のまま、日英だけを変える。シフトや記号のページはそのまま
+        commitAll()
+        _state.update { it.copy(textFace = Faces.otherLanguage(it.textFace)) }
     }
 
     private fun startVoice() {
