@@ -28,4 +28,12 @@ class FacesTest {
         assertEquals(KeyboardFace.QwertyAlphabet, Faces.otherLanguage(KeyboardFace.QwertyKana))
         assertEquals(KeyboardFace.QwertyKana, Faces.otherLanguage(KeyboardFace.QwertyAlphabet))
     }
+
+    @Test
+    fun languageToggleStaysOnTheSymbolFace() {
+        assertEquals(KeyboardFace.QwertySymbols, Faces.afterLanguageToggle(KeyboardFace.QwertySymbols, KeyboardFace.QwertyKana))
+        assertEquals(KeyboardFace.FlickNumber, Faces.afterLanguageToggle(KeyboardFace.FlickNumber, KeyboardFace.FlickAlphabet))
+        assertEquals(KeyboardFace.QwertyAlphabet, Faces.afterLanguageToggle(KeyboardFace.QwertyKana, KeyboardFace.QwertyKana))
+        assertEquals(KeyboardFace.FlickKana, Faces.afterLanguageToggle(KeyboardFace.FlickAlphabet, KeyboardFace.FlickAlphabet))
+    }
 }

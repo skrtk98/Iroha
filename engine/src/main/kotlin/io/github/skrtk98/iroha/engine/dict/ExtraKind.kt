@@ -38,6 +38,9 @@ enum class ExtraKind(val marker: Char) {
 
     /** 読みの数が多い接頭辞で、予測に出す語の上位。表記は「読み<TAB>表記」。予め選んでおき、打鍵ごとに全部を調べない。 */
     Prediction(''),
+
+    /** Iroha が用意する記号と英字の固有名詞 (engine/data/special.tsv)。先頭の候補のすぐ後に出す。 */
+    Special(''),
     ;
 
     fun key(reading: CharSequence): String = marker + reading.toString()
